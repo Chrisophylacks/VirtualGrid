@@ -1,0 +1,29 @@
+{
+  "name": "virtual-grid",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/main.js",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm i && npm run clean && tsc"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@angular/common": "^4.3.1",
+    "@angular/compiler": "^4.0.0",
+    "@angular/core": "^4.3.1",
+    "@angular/forms": "^4.3.1",
+    "core-js": "^2.4.1",
+    "less": "^2.7.2",
+    "rxjs": "^5.0.1",
+    "zone.js": "^0.8.4"
+  },
+  "devDependencies": {
+    "@types/core-js": "^0.9.42",
+    "@types/node": "^6.0.46",
+    "typescript": "^2.1.6",
+    "rimraf": "latest"
+  },
+  "typings": "dist/main.d.ts"
+}

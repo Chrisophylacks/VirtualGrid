@@ -1,0 +1,51 @@
+html, body {
+    margin: 0px;
+    padding: 0px;
+}
+
+.row-even {
+    background: white
+}
+
+.row-odd {
+    background: #f6f6f6
+}
+
+.row:hover {
+    background: lightblue;
+}
+
+.cell {
+    border-left: 1px solid transparent;
+    border-right: 1px dotted darkgrey;
+    height:100%;
+    display:inline-block;
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fake-viewport {
+    position:relative;
+}
+
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.column-header {
+    margin:0px;
+    padding:0px;
+    border-right:1px solid black;
+}
+
+div.resize-grip {
+    height:100%;
+    width:4px;
+    cursor:col-resize;
+}
+
+.nines {
+    background: red
+}
