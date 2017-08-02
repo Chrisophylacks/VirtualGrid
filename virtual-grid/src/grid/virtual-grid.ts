@@ -67,7 +67,8 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         this._options.dataSource.init(this);
     }
 
-    constructor() {
+    constructor(
+        private readonly changeDetectorRef: ChangeDetectorRef) {
         super();
         this.anchor(this.columnSubscription);
     }
@@ -87,6 +88,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         this.rowCount = rowCount;
         this.updateViewport();
         this.fakeViewport.style.height =  (this._options.rowHeight * (this.rowCount + 1) - 1) + 'px';
+        this.raiseRangeChange();
     }
 
     public setColumns(columns : api.ColumnDefinition[]) : void {
@@ -110,6 +112,8 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
             return col;
         });
         this.columnSubscription.set(columnChanges);
+        this.updateViewportWidth();
+        this.changeDetectorRef.detectChanges();
     }
 
     public updateRows(rows : api.DataRow[]) {
@@ -315,8 +319,10 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
 
     private getTotalWidth() : number {
         var res : number = 0;
-        for (var column of this.columns) {
-            res += (column.width.value + 2);
+        if (this.columns !== undefined) {
+            for (var column of this.columns) {
+                res += (column.width.value + 2);
+            }
         }
         return res;
     }

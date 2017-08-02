@@ -17,17 +17,19 @@ export class AppComponent implements AfterViewInit {
     }
 
     let dataSource = new api.MemoryDataSource();
-    dataSource.setSchema(columns);
+    setTimeout(() => {
+      dataSource.setSchema(columns);
 
-    let rows = new Array();
-    for (let i = 1; i <= 1000; ++ i) {
-      let row = { index : i };
-      for (let col of columns) {
-        row[col.field] = col.field + '-' + i;
+      let rows = new Array();
+      for (let i = 1; i <= 1000; ++ i) {
+        let row = { index : i };
+        for (let col of columns) {
+          row[col.field] = col.field + '-' + i;
+        }
+        rows.push(row);
       }
-      rows.push(row);
-    }
-    dataSource.refresh(rows);
+      dataSource.refresh(rows);
+    }, 2000);
     
     this.gridOptions = {
       dataSource : dataSource,

@@ -41,11 +41,12 @@ export class MemoryDataSource implements api.IGridDataSource {
 
     refresh(data : any[]) {
         this.data = data.map((x, i) => <api.DataRow>{ index : i, data : x});
+        this.resort();
+
         if (this.gridApi !== undefined) {
             this.gridApi.setRowCount(this.data.length);
         }
 
-        this.resort();
         this.update();
     }
 
