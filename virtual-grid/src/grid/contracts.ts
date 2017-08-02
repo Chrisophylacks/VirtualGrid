@@ -1,5 +1,3 @@
-import { Observable } from 'rxjs';
-
 export interface ColumnDefinition {
     width? : number;
     field : string;
@@ -31,10 +29,8 @@ export interface ColumnFilter {
 
 export interface IGridApi {
     setRowCount(rowCount : number);
-    rangeChanges : Observable<RowRange>;
-    sortChanges : Observable<ColumnSort[]>
-    filterChanges : Observable<ColumnFilter[]>
-    update(rows : DataRow[]);
+    setColumns(columns : ColumnDefinition[]);
+    updateRows(rows : DataRow[]);
 }
 
 export enum RowAlternationMode {
@@ -49,15 +45,16 @@ export enum SortDirection {
     Descending = 2
 }
 
-export interface GridOptions {
-    columns : ColumnDefinition[];
-    rowHeight : number;
-    onGridReady? : () => void;
-    api? : IGridApi;
-    rowAlternationMode? : RowAlternationMode
+export interface IGridDataSource {
+    init(gridApi : IGridApi) : void;
+    requestRange(range: RowRange);
+    requestSort(sort: ColumnSort[]);
+    requestFilter(filters : ColumnFilter[]);
 }
 
-export interface IFilter {
-    change : Observable<void>;
-    apply(value : any) : boolean;
+export interface GridOptions {
+    dataSource : IGridDataSource;
+    rowHeight : number;
+    rowAlternationMode? : RowAlternationMode;
+    onRowDoubleClicked? : (any) => void;
 }

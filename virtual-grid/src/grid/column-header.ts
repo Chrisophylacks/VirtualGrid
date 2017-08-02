@@ -16,18 +16,23 @@ export class Column {
         return this.def.title || this.def.field;
     }
 
-    public formatText(rowData : api.DataRow | null) : string {
-        if (rowData === null) { 
+    public formatText(rowData? : api.DataRow) : string {
+        if (rowData === undefined) { 
             return '...';
         }
         if (this.def.formatText != null) {
             return this.def.formatText(rowData.data);
         }
-        return rowData[this.def.field].toString();
+
+        let fieldValue =  rowData.data[this.def.field];
+        if (fieldValue === undefined) {
+            return '';
+        }
+        return fieldValue.toString();
     }
 
-    public getClass(rowData : api.DataRow | null) : string {
-        if (rowData !== null && this.def.formatCss != null) {
+    public getClass(rowData : api.DataRow) : string {
+        if (rowData !== undefined && this.def.formatCss != null) {
             return this.def.formatCss(rowData.data);
         }
         return '';
@@ -49,7 +54,7 @@ export class Column {
 })
 export class ColumnHeader extends ComponentBase implements AfterViewInit {
     private _column : Column
-    private _filterComponent : api.IFilter;
+    //private _filterComponent : api.IFilter;
 
     @Input()
     public get column() : Column {
@@ -111,10 +116,11 @@ export class ColumnHeader extends ComponentBase implements AfterViewInit {
     }
 
     public filter() {
+        /*
         if (this._column.def.filterComponent !== undefined) {
             let factory = this.componentFactoryResolver.resolveComponentFactory<api.IFilter>(this._column.def.filterComponent);
             let component = this.viewContainerRef.createComponent<api.IFilter>(factory);
-        }
+        }*/
     }
 
     private initResize() {

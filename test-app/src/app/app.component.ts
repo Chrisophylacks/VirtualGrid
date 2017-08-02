@@ -1,5 +1,4 @@
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input } from "@angular/core";
-import { TestDataSource } from './datasources';
 import * as api from 'virtual-grid';
 
 @Component({
@@ -9,49 +8,39 @@ import * as api from 'virtual-grid';
 })
 export class AppComponent implements AfterViewInit {
   title: String = "App Works !";
-  dataSource: TestDataSource;
   gridOptions : api.GridOptions;
 
   constructor() {
+    let columns =new Array();
+    for (let i = 1; i <= 20; ++ i){
+      columns.push(this.createColumn(i));
+    }
+
+    let dataSource = new api.MemoryDataSource();
+    dataSource.setSchema(columns);
+
+    let rows = new Array();
+    for (let i = 1; i <= 1000; ++ i) {
+      let row = { index : i };
+      for (let col of columns) {
+        row[col.field] = col.field + '-' + i;
+      }
+      rows.push(row);
+    }
+    dataSource.refresh(rows);
+    
     this.gridOptions = {
-      columns :
-            [
-                this.createColumn('index'),
-                this.createColumn('data1'),
-                this.createColumn('data2'),
-                this.createColumn('data3'),
-                this.createColumn('data4'),
-                this.createColumn('data5'),
-                this.createColumn('data6'),
-                this.createColumn('data7'),
-                this.createColumn('data8'),
-                this.createColumn('data9'),
-                this.createColumn('data10'),
-                this.createColumn('data11'),
-                this.createColumn('data12'),
-                this.createColumn('data13'),
-                this.createColumn('data14'),
-                this.createColumn('data15'),
-                this.createColumn('data16'),
-                this.createColumn('data17'),
-                this.createColumn('data18'),
-                this.createColumn('data19')
-            ],
-            onGridReady : () =>
-            {
-              if (this.gridOptions.api !== undefined) {
-                this.dataSource = new TestDataSource(this.gridOptions.api);
-              }
-            },
-            rowHeight : 23,
-            rowAlternationMode : api.RowAlternationMode.DataIndex
-        };
+      dataSource : dataSource,
+      rowHeight : 23,
+      rowAlternationMode : api.RowAlternationMode.DataIndex
+    };
   }
 
   public ngAfterViewInit(): void {
   }
 
-  private createColumn(field : string) : api.ColumnDefinition {
+  private createColumn(i : number) : api.ColumnDefinition {
+    let field = 'data' + i;
     return {
       field : field,
       width : 70,

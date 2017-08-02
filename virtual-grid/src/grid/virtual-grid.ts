@@ -1,9 +1,9 @@
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input } from "@angular/core";
 import { HorizontalDragService } from '../utils/horizontaldragservice';
-import { ComponentBase, Utils } from '../utils/utils';
 import { Column } from './column-header';
 import { Observable, BehaviorSubject } from 'rxjs';
 import * as api from './contracts';
+import * as utils from '../utils/utils';
 
 @Component({
   selector: 'virtual-grid',
@@ -21,7 +21,7 @@ import * as api from './contracts';
         </div>
     </div>`
 })
-export class VirtualGridComponent extends ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
+export class VirtualGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
 
     private visibleRows : RowHandle[] = new Array();
 
@@ -30,6 +30,7 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
     private rowCount : number = 0;
     private topIndex : number = 0;
     private _options : api.GridOptions;
+    private readonly columnSubscription : utils.SerialSubscription = new utils.SerialSubscription();
 
     private _rangeSubject : BehaviorSubject<api.RowRange> = new BehaviorSubject<api.RowRange>({ startIndex : 0, count : 0 });
     public get rangeChanges() : Observable<api.RowRange> {
@@ -63,26 +64,12 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
 
     @Input() set gridOptions(gridOptions : api.GridOptions) {
         this._options = gridOptions;
-        this.columns = gridOptions.columns.map(x =>
-        {
-            var col = new Column(x);
-            this.anchor(col.width.onChanged(() =>
-            {
-                this.updateViewportWidth();
-                this.arrangeRows();
-            }));
-            this.anchor(col.sortDirection.onChanged(() =>
-            {
-                // this.invalidateAllRows(); // TODO: decide if this is necessary
-                this.raiseSortChange();
-            }));            
-            return col;
-        });
+        this._options.dataSource.init(this);
+    }
 
-        this._options.api = this;
-        if (this._options.onGridReady != null) {
-            this._options.onGridReady();
-        }        
+    constructor() {
+        super();
+        this.anchor(this.columnSubscription);
     }
 
     public get headerHeight() : string {
@@ -90,8 +77,8 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
     }
 
     public ngAfterViewInit() : void {
-        Utils.subscribe(this.viewport, 'scroll', () => this.onScroll());
-        Utils.subscribeResize(() => this.onResize());
+        utils.Utils.subscribe(this.viewport, 'scroll', () => this.onScroll());
+        utils.Utils.subscribeResize(() => this.onResize());
 
         this.onResize();
     }
@@ -102,7 +89,30 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
         this.fakeViewport.style.height =  (this._options.rowHeight * (this.rowCount + 1) - 1) + 'px';
     }
 
-    public update(rows : api.DataRow[]) {
+    public setColumns(columns : api.ColumnDefinition[]) : void {
+        let columnChanges = new utils.CompositeSubscription();
+        this.columns = columns.map(x =>
+        {
+            var col = new Column(x);
+            columnChanges.add(
+                col.width.onChanged(() =>
+                {
+                    this.updateViewportWidth();
+                    this.arrangeRows();
+                }));
+
+            columnChanges.add(
+                col.sortDirection.onChanged(() =>
+                {
+                    // this.invalidateAllRows(); // TODO: decide if this is necessary
+                    this.raiseSortChange();
+                }));            
+            return col;
+        });
+        this.columnSubscription.set(columnChanges);
+    }
+
+    public updateRows(rows : api.DataRow[]) {
         let maxIndex = this.topIndex + this.visibleRows.length - 1;
         for (let dataRow of rows) {
             let adjustedIndex = dataRow.index - this.topIndex;
@@ -147,7 +157,7 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
     }
 
     private updateViewport() : void {
-        if (this.columns == null) {
+        if (this.columns === undefined) {
             return;
         }
 
@@ -167,7 +177,7 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
         // cache existing data
         var dataMap = new Map<number, api.DataRow>();
         for (let row of this.visibleRows) {
-            if (row.dataRow !== null) {
+            if (row.dataRow !== undefined) {
                 dataMap.set(row.dataRow.index, row.dataRow);
             }
         }
@@ -190,7 +200,7 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
                 this.visibleRows[i].dataRow = cachedRow;
             }
             else { 
-                this.visibleRows[i].dataRow = null;
+                this.visibleRows[i].dataRow = undefined;
             }
             this.renderRow(this.visibleRows[i]);
         }
@@ -200,7 +210,7 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
 
     private invalidateAllRows() : void {
         for (let row of this.visibleRows) {
-            row.dataRow = null;
+            row.dataRow = undefined;
             this.renderRow(row);
         }
     }
@@ -276,7 +286,6 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
         }
 
         var rowHandle = {
-            dataRow : null,
             nativeElement : element,
             cells : cells,
             lastClass : '',
@@ -313,11 +322,11 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
     }
 
     private raiseRangeChange() {
-        this._rangeSubject.next({ startIndex : this.topIndex, count : this.visibleRows.length });
+        this._options.dataSource.requestRange({ startIndex : this.topIndex, count : this.visibleRows.length });
     }
 
     private raiseSortChange() {
-        this._sortSubject.next(
+        this._options.dataSource.requestSort(
             this.columns
                 .filter(c => c.sortDirection.value !== api.SortDirection.None)
                 .map(c => <api.ColumnSort>{ column : c.def, sortDirection : c.sortDirection.value }));
@@ -327,7 +336,7 @@ export class VirtualGridComponent extends ComponentBase implements AfterViewInit
 interface RowHandle {
     lastClass : string;
     visibleIndex : number;
-    dataRow : api.DataRow | null;
+    dataRow? : api.DataRow;
     nativeElement : HTMLElement;
     cells : Map<string, CellHandle>;
 }

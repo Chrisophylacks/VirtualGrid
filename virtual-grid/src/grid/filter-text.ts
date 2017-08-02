@@ -9,7 +9,7 @@ import * as api from './contracts';
     <div><input [(ngModel)]="text"></div>
     `
 })
-export class FilterText extends ComponentBase implements api.IFilter {
+export class FilterText extends ComponentBase {
 
     private _change : Subject<void>
     public get change() { return this._change; }
