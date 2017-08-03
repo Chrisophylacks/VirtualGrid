@@ -42,14 +42,12 @@ export class Column {
 @Component({
   selector: 'vcolumn-header',
   template: `
-    <div style="height:100%;display:inline-block" [style.width]='currentWidth'>
-        <div class="column-header" (click)="sort()" style="height:100%">
-            <div #resizeGrip class="resize-grip" style="float:right" (click)="suppress($event)"></div>
-            <div *ngIf="column.sortDirection.value == 1" style="float:left">^</div>
-            <div *ngIf="column.sortDirection.value == 2" style="float:left">V</div>
-            <!--<button style="float:left" (click)="filter()">F</button>-->
-            <div class="truncate" style="display:inline;user-select:none">{{currentTitle}}</div>
-        </div>
+    <div class="column-header" (click)="sort()" [style.width]='currentWidth'>
+        <div #resizeGrip class="resize-grip" style="float:right" (click)="suppress($event)"></div>
+        <div *ngIf="column.sortDirection.value == 1" style="float:left">^</div>
+        <div *ngIf="column.sortDirection.value == 2" style="float:left">V</div>
+        <!--<button style="float:left" (click)="filter()">F</button>-->
+        <div class="column-header-text">{{currentTitle}}</div>
     </div>`
 })
 export class ColumnHeader extends ComponentBase implements AfterViewInit {

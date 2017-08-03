@@ -1,6 +1,9 @@
 var webpack = require("webpack");
 var path = require("path");
-var htmlWebpackPlugin = require("html-webpack-plugin");
+const htmlWebpackPlugin = require("html-webpack-plugin");
+const ExtractTextPlugin = require("extract-text-webpack-plugin");
+
+let extractCSS = new ExtractTextPlugin('[name].[contenthash].css');
 
 module.exports = {
   //entry file to begin bundling
@@ -34,12 +37,8 @@ module.exports = {
       },
       {
         test: /\.less$/,
-        use: [{
-            loader: "raw-loader"
-        }, {
-            loader: "less-loader" // compiles Less to CSS
-        }]
-      }      
+        loader: extractCSS.extract(['css-loader', 'less-loader'])
+      }
     ]
   },
   plugins: [
@@ -54,7 +53,8 @@ module.exports = {
       /angular(\\|\/)core(\\|\/)@angular/,
       root('./src'), // location of your src
       {}
-    )
+    ),
+    extractCSS
   ],
   devServer: { 
     // when using html 5 history api this options helps navigate back to index.html for 404 responses.

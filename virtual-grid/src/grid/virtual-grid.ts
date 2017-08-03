@@ -254,7 +254,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
 
             //cell.nativeElement.innerText = column.formatText(row.dataRow);
             cell.textNode.textContent = column.formatText(row.dataRow);
-            let cellClass = column.getClass(row.dataRow);
+            let cellClass = column.getClass(row.dataRow) || '';
             if (cellClass !== cell.lastClass) {
                 if (cell.lastClass != '') {
                     cell.nativeElement.classList.remove(cell.lastClass);
@@ -304,7 +304,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         var offset = 0;
         var cell = <HTMLElement>row.nativeElement.firstChild;
         for (var column of this.columns) {
-            cell.style.width = column.width.value - 2 + 'px';
+            cell.style.width = column.width.value + 'px';
             cell.style.left = offset + 'px';
             offset += column.width.value;
             cell = <HTMLElement>cell.nextSibling;
@@ -321,7 +321,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         var res : number = 0;
         if (this.columns !== undefined) {
             for (var column of this.columns) {
-                res += (column.width.value + 2);
+                res += column.width.value;
             }
         }
         return res;

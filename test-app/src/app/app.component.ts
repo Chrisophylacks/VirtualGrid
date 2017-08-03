@@ -42,7 +42,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   private createColumn(i : number) : api.ColumnDefinition {
-    let field = 'data' + i;
+    let field = 'data long header ' + i;
     return {
       field : field,
       width : 70,
