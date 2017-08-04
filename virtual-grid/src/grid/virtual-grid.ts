@@ -1,22 +1,23 @@
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input } from "@angular/core";
 import { HorizontalDragService } from '../utils/horizontaldragservice';
 import { Column } from './column-header';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { MenuPopup } from './menu-popup';
 import * as api from './contracts';
 import * as utils from '../utils/utils';
 
 @Component({
   selector: 'virtual-grid',
   template: `
-    <div #grid class="grid" style="width:100%;height:100%;display:flex;flex-direction:column">
+    <div #grid class="grid" style="width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
         <div style="width:100%" [style.height]="headerHeight" style="overflow:hidden">
             <div #header class="header" style="position:relative;height:100%">
-                <vcolumn-header [column]="col" *ngFor="let col of columns" style="height:100%;display:inline-block;vertical-align:top"></vcolumn-header>
+                <vcolumn-header [column]="col" [menu]="menu" *ngFor="let col of columns" style="height:100%;display:inline-block;vertical-align:top"></vcolumn-header>
             </div>
         </div>
+        <menu-popup #menu></menu-popup>
         <div #viewport class="viewport" style="overflow-x:scroll;overflow-y:scroll;white-space:nowrap;position:relative;flex:1 1;min-height:0px">
             <div class="fake-viewport" #fakeViewport style="position:absolute">
-                <div class="row-container" #rowContainer style="position:absolute"></div>
+                <div class="row-container" #rowContainer style="position:absolute;width:100%"></div>
             </div>
         </div>
     </div>`
@@ -31,21 +32,6 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
     private topIndex : number = 0;
     private _options : api.GridOptions;
     private readonly columnSubscription : utils.SerialSubscription = new utils.SerialSubscription();
-
-    private _rangeSubject : BehaviorSubject<api.RowRange> = new BehaviorSubject<api.RowRange>({ startIndex : 0, count : 0 });
-    public get rangeChanges() : Observable<api.RowRange> {
-        return this._rangeSubject;
-    }
-
-    private _sortSubject : BehaviorSubject<api.ColumnSort[]> = new BehaviorSubject<api.ColumnSort[]>(Array.of<api.ColumnSort>());
-    public get sortChanges() : Observable<api.ColumnSort[]> {
-        return this._sortSubject;
-    }
-
-    private _filterSubject : BehaviorSubject<api.ColumnFilter[]> = new BehaviorSubject<api.ColumnFilter[]>(Array.of<api.ColumnFilter>());
-    public get filterChanges() : Observable<api.ColumnFilter[]> {
-        return this._filterSubject;
-    }
 
     @ViewChild('grid') gridRef : ElementRef;
     private get grid() : HTMLElement { return <HTMLElement>this.gridRef.nativeElement; }
@@ -62,9 +48,10 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
     @ViewChild('rowContainer') rowContainerRef : ElementRef;
     private get rowContainer() : HTMLElement { return <HTMLElement>this.rowContainerRef.nativeElement; }
 
+    @ViewChild('menu') menu : MenuPopup;
+
     @Input() set gridOptions(gridOptions : api.GridOptions) {
         this._options = gridOptions;
-        this._options.dataSource.init(this);
     }
 
     constructor(
@@ -82,20 +69,23 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         utils.Utils.subscribeResize(() => this.onResize());
 
         this.onResize();
+        this._options.dataSource.init(this);
     }
 
     public setRowCount(rowCount : number) {
-        this.rowCount = rowCount;
-        this.updateViewport();
-        this.fakeViewport.style.height =  (this._options.rowHeight * (this.rowCount + 1) - 1) + 'px';
-        this.raiseRangeChange();
+        if (this.rowCount !== rowCount) {
+            this.rowCount = rowCount;
+            this.updateViewport();
+            this.fakeViewport.style.height =  (this._options.rowHeight * (this.rowCount + 1) - 1) + 'px';
+            this.raiseRangeChange();
+        }
     }
 
     public setColumns(columns : api.ColumnDefinition[]) : void {
         let columnChanges = new utils.CompositeSubscription();
         this.columns = columns.map(x =>
         {
-            var col = new Column(x);
+            var col = new Column(x, this._options.dataSource);
             columnChanges.add(
                 col.width.onChanged(() =>
                 {
@@ -128,6 +118,16 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         }
     }
 
+    public buildFilterExpression<T>(builder : api.IExpressionBuilder<T>, defaultExpression :T) : T {
+        let expr = defaultExpression;
+        for (let col of this.columns) {
+            if (col.filter && col.filter.isEnabled()){
+                expr = builder.and(expr, col.filter.createFilterExpression(builder));
+            }
+        }
+        return expr;
+    }
+
     public ngOnDestroy() {
         super.ngOnDestroy();
     }
@@ -152,7 +152,6 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
     private updateViewportWidth() : void {
         let width = this.getTotalWidth() + 'px';
         this.header.style.width = width;
-        this.rowContainer.style.width = width;
         this.fakeViewport.style.width = width;
     }
 
@@ -305,7 +304,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         var cell = <HTMLElement>row.nativeElement.firstChild;
         for (var column of this.columns) {
             cell.style.width = column.width.value + 'px';
-            cell.style.left = offset + 'px';
+//            cell.style.left = offset + 'px';
             offset += column.width.value;
             cell = <HTMLElement>cell.nextSibling;
         }

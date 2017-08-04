@@ -3,13 +3,13 @@ import { BrowserModule } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { VirtualGridComponent } from './grid/virtual-grid';
 import { ColumnHeader } from './grid/column-header';
-import { FilterText } from './grid/filter-text';
+import { FilterTextView } from './grid/filter-text';
+import { MenuPopup } from './grid/menu-popup';
 
 @NgModule({
-  declarations: [VirtualGridComponent, ColumnHeader, FilterText],
+  declarations: [VirtualGridComponent, ColumnHeader, FilterTextView, MenuPopup],
   imports: [FormsModule, BrowserModule],
   exports: [VirtualGridComponent],
-  entryComponents: [ FilterText ],
-  providers: [ { provide: ANALYZE_FOR_ENTRY_COMPONENTS, useValue: [], multi:true } ] 
+  entryComponents: [ FilterTextView ]
 })
 export class VirtualGridModule { }

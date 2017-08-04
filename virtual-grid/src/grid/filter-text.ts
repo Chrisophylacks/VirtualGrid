@@ -3,27 +3,39 @@ import { ComponentBase } from '../utils/utils';
 import { Observable, Subject } from 'rxjs';
 import * as api from './contracts';
 
-@Component({
-    selector: 'filter-text',
-    template : `
-    <div><input [(ngModel)]="text"></div>
-    `
-})
-export class FilterText extends ComponentBase {
+export class FilterText implements api.IFilter {
 
-    private _change : Subject<void>
-    public get change() { return this._change; }
+    constructor(private readonly params : api.IFilterParams) {
+    }
+
+    public isEnabled() : boolean {
+        return this._text !== '';
+    }
+
+    public getViewComponentType() : any {
+        return FilterTextView;
+    }
 
     private _text : string = '';
     public get text() : string { return this._text; };
     public set text(value : string) {
         if (this._text != value) {
            this._text = value;
-           this._change.next();
+           this.params.dataSource.requestFilter();
         }
     }
 
-    public apply(value : any) : boolean {
-        return value.toString().indexOf(this._text) >= 0;
+    public createFilterExpression<T>(builder : api.IExpressionBuilder<T>) : T {
+        return builder.contains(this.params.column, this._text);
     }
+}
+
+@Component({
+    selector: 'filter-text',
+    template : `
+    <div style="position:absolute;z-index:1"><input [(ngModel)]="filter.text" placeholder="Filter Text..."></div>
+    `
+})
+export class FilterTextView extends ComponentBase {
+    @Input() public filter : FilterText;
 }

@@ -1,15 +1,24 @@
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, ComponentFactoryResolver, ComponentFactory, ViewContainerRef, ComponentRef } from "@angular/core";
 import { HorizontalDragService } from '../utils/horizontaldragservice';
 import { ComponentBase, Utils, Property } from '../utils/utils';
+import { IMenuPopup } from './menu-popup';
 import * as api from './contracts';
 
 export class Column {
     public width : Property<number> = new Property<number>();
     public sortDirection : Property<api.SortDirection> = new Property<api.SortDirection>();
+    public filter : api.IFilter | undefined;
 
-    constructor(public readonly def :api. ColumnDefinition) {
+    constructor(public readonly def : api. ColumnDefinition, dataSource : api.IGridDataSource) {
         this.width.value = (def.width || 100);
         this.sortDirection.value = api.SortDirection.None;
+        if (def.filterFactory) {
+            this.filter = def.filterFactory(
+                {
+                    dataSource : dataSource,
+                    column : def
+                });
+        }
     }
 
     get title() : string {
@@ -37,40 +46,45 @@ export class Column {
         }
         return '';
     }
+
+    public flipSorting() {
+        switch (this.sortDirection.value) {
+            case api.SortDirection.None: {
+                this.sortDirection.value = api.SortDirection.Ascending;
+                break;
+            }
+            case api.SortDirection.Ascending: {
+                this.sortDirection.value = api.SortDirection.Descending;
+                break;
+            }
+            case api.SortDirection.Descending: {
+                this.sortDirection.value = api.SortDirection.None;
+                break;
+            }
+        }
+    }
 }
 
 @Component({
   selector: 'vcolumn-header',
   template: `
-    <div class="column-header" (click)="sort()" [style.width]='currentWidth'>
-        <div #resizeGrip class="resize-grip" style="float:right" (click)="suppress($event)"></div>
-        <div *ngIf="column.sortDirection.value == 1" style="float:left">^</div>
-        <div *ngIf="column.sortDirection.value == 2" style="float:left">V</div>
-        <!--<button style="float:left" (click)="filter()">F</button>-->
-        <div class="column-header-text">{{currentTitle}}</div>
+    <div class="column-header" [style.width]='currentWidth'>
+        <div #resizeGrip class="resize-grip" style="float:right"></div>
+        <div *ngIf="column.sortDirection.value == 1" style="float:left">▲</div>
+        <div *ngIf="column.sortDirection.value == 2" style="float:left">▼</div>
+        <div *ngIf="column.filter" cl #filterButton [class]="filterClass" (click)="filter()">F</div>
+        <div class="column-header-text" (click)="sort()">{{currentTitle}}</div>
     </div>`
 })
 export class ColumnHeader extends ComponentBase implements AfterViewInit {
-    private _column : Column
-    //private _filterComponent : api.IFilter;
+    @Input() menu : IMenuPopup;
 
-    @Input()
-    public get column() : Column {
-        return this._column;
-    }
-
-    public set column(column : Column) {
-        this._column = column;
-    }
+    @Input() column : Column;
 
     @ViewChild('resizeGrip') resizeGripRef : ElementRef;
     private get resizeGrip() : HTMLElement { return <HTMLElement>this.resizeGripRef.nativeElement; }
 
-    constructor(
-        private componentFactoryResolver : ComponentFactoryResolver,
-        private viewContainerRef : ViewContainerRef) {
-        super();
-    }
+    @ViewChild('filterButton') filterButtonRef : ElementRef;
 
     public get currentWidth() {
         if (!this.column) {
@@ -88,6 +102,12 @@ export class ColumnHeader extends ComponentBase implements AfterViewInit {
         return this.column.title;
     }    
 
+    public get filterClass() {
+        if (!this.column.filter) {
+            return '';
+        }
+        return this.column.filter.isEnabled() ? 'filter' : 'filter filter-inactive';
+    }
     public ngAfterViewInit() : void {
         this.initResize();
     }
@@ -97,28 +117,17 @@ export class ColumnHeader extends ComponentBase implements AfterViewInit {
     }
 
     public sort() : void {
-        switch (this._column.sortDirection.value) {
-            case api.SortDirection.None: {
-                this._column.sortDirection.value = api.SortDirection.Ascending;
-                break;
-            }
-            case api.SortDirection.Ascending: {
-                this._column.sortDirection.value = api.SortDirection.Descending;
-                break;
-            }
-            case api.SortDirection.Descending: {
-                this._column.sortDirection.value = api.SortDirection.None;
-                break;
-            }
-        }
+        this.column.flipSorting();
     }
 
     public filter() {
-        /*
-        if (this._column.def.filterComponent !== undefined) {
-            let factory = this.componentFactoryResolver.resolveComponentFactory<api.IFilter>(this._column.def.filterComponent);
-            let component = this.viewContainerRef.createComponent<api.IFilter>(factory);
-        }*/
+        if (this.column.filter !== undefined) {
+            let origin = this.filterButtonRef.nativeElement;
+            this.menu.show(
+                this.column.filter.getViewComponentType(),
+                origin.offsetLeft + origin.offsetParent.offsetLeft,
+                c => { c.filter = this.column.filter; });
+        }
     }
 
     private initResize() {

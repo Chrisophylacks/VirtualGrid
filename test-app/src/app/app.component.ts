@@ -16,19 +16,35 @@ export class AppComponent implements AfterViewInit {
       columns.push(this.createColumn(i));
     }
 
+    let step = 0;
+    let createRow = (index : number) => {
+        let row = { };
+        let h = 0;
+        for (let col of columns) {
+          row[col.field] = h + '-' + (index + h) + '-' + step;
+          ++h;
+        }
+        return row;
+    }
+
     let dataSource = new api.MemoryDataSource();
     setTimeout(() => {
       dataSource.setSchema(columns);
 
       let rows = new Array();
-      for (let i = 1; i <= 1000; ++ i) {
-        let row = { index : i };
-        for (let col of columns) {
-          row[col.field] = col.field + '-' + i;
-        }
-        rows.push(row);
+      for (let i = 0; i < 1000; ++ i) {
+        rows.push(createRow(i));
       }
       dataSource.refresh(rows);
+
+      setInterval(() => {
+        ++step;
+        dataSource.beginBatch();
+        for (let i = 0; i < 1000; i += 10) {
+          dataSource.update(i, createRow(i));
+        }
+        dataSource.endBatch();
+      }, 100);
     }, 2000);
     
     this.gridOptions = {
@@ -42,7 +58,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   private createColumn(i : number) : api.ColumnDefinition {
-    let field = 'data long header ' + i;
+    let field = 'data' + i;
     return {
       field : field,
       width : 70,
@@ -50,10 +66,11 @@ export class AppComponent implements AfterViewInit {
       {
         return (value[field].toString().indexOf('9') >= 0) ? 'nines' : '';
       },
-      formatText : value =>
-      {
-        return (<string>value[field].toString()).replace(/-/g, ' ');
-      }
+      // formatText : value =>
+      // {
+      //   return (<string>value[field].toString()).replace(/-/g, ' ');
+      // },
+      filterFactory : params => new api.FilterText(params)
     }
   }
 }

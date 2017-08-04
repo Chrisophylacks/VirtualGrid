@@ -4,7 +4,7 @@ export interface ColumnDefinition {
     title? : string;
     formatText? : (rowData : any) => string;
     formatCss? : (rowData : any) => string;
-    filterComponent? : any;
+    filterFactory? : (params : IFilterParams) => IFilter;
 }
 
 export interface DataRow {
@@ -22,15 +22,12 @@ export interface ColumnSort {
     sortDirection : SortDirection;
 }
 
-export interface ColumnFilter {
-    column : ColumnDefinition
-    filterState : any
-}
-
 export interface IGridApi {
     setRowCount(rowCount : number);
     setColumns(columns : ColumnDefinition[]);
     updateRows(rows : DataRow[]);
+
+    buildFilterExpression<T>(builder : IExpressionBuilder<T>, defaultExpression :T) : T;
 }
 
 export enum RowAlternationMode {
@@ -49,7 +46,7 @@ export interface IGridDataSource {
     init(gridApi : IGridApi) : void;
     requestRange(range: RowRange);
     requestSort(sort: ColumnSort[]);
-    requestFilter(filters : ColumnFilter[]);
+    requestFilter();
 }
 
 export interface GridOptions {
@@ -57,4 +54,20 @@ export interface GridOptions {
     rowHeight : number;
     rowAlternationMode? : RowAlternationMode;
     onRowDoubleClicked? : (any) => void;
+}
+
+export interface IFilter {
+    isEnabled() : boolean;
+    getViewComponentType() : any;
+    createFilterExpression<T>(builder : IExpressionBuilder<T>) : T;
+}
+
+export interface IFilterParams {
+    dataSource : IGridDataSource;
+    column : ColumnDefinition;
+}
+
+export interface IExpressionBuilder<T> {
+    contains(column : ColumnDefinition, text : string) : T,
+    and(first : T, second : T) : T;
 }

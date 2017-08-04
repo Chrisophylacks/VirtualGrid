@@ -1,4 +1,5 @@
 export * from './grid/contracts'
-export * from './grid/virtual-grid'
+export { FilterText } from './grid/filter-text'
+export * from './memory/memory-data-source'
 export * from './virtual-grid.module'
-export * from './memory/memory-data-source';
+
