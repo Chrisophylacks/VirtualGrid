@@ -1,5 +1,6 @@
-import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, ComponentFactoryResolver, ComponentFactory, ViewContainerRef, ComponentRef } from "@angular/core";
 import * as utils from '../utils/utils';
+
+import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, ComponentFactoryResolver, ComponentFactory, ViewContainerRef, ComponentRef } from "@angular/core";
 
 export interface IMenuPopup {
     show<T>(componentType : any, offsetX : number, setInputs? : (any) => void) : void;
@@ -44,10 +45,11 @@ export class MenuPopup extends utils.ComponentBase implements IMenuPopup {
             }
 
             let body = document.body;
-            subscriptions = new utils.CompositeSubscription(
-                utils.Utils.subscribe(body, 'click', hide),
-                utils.Utils.subscribe(body, 'contextmenu', hide),
-                utils.Utils.subscribe(component.location.nativeElement, 'click', suppressHide));
+            subscriptions = new utils.CompositeSubscription([
+                utils.subscribe(body, 'click', hide),
+                utils.subscribe(body, 'contextmenu', hide),
+                utils.subscribe(component.location.nativeElement, 'click', suppressHide)
+            ]);
         }, 0);
     }
 }

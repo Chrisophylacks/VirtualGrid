@@ -23,6 +23,10 @@ export interface ColumnSort {
 }
 
 export interface IGridApi {
+    setColumnVisibility(column: ColumnDefinition, visible : boolean);
+    getColumnVisibility(column: ColumnDefinition) : boolean;
+
+    // data
     setRowCount(rowCount : number);
     setColumns(columns : ColumnDefinition[]);
     updateRows(rows : DataRow[]);
@@ -47,6 +51,13 @@ export interface IGridDataSource {
     requestRange(range: RowRange);
     requestSort(sort: ColumnSort[]);
     requestFilter();
+
+    getFilterValues(column : ColumnDefinition) : Promise<string[]>;
+    getSuggestions(column : ColumnDefinition, text : string) : Promise<string[]>;
+}
+
+export interface IconSet {
+    filter? : string;
 }
 
 export interface GridOptions {
@@ -54,12 +65,15 @@ export interface GridOptions {
     rowHeight : number;
     rowAlternationMode? : RowAlternationMode;
     onRowDoubleClicked? : (any) => void;
+    icons? : IconSet;
+    api? : IGridApi;
 }
 
 export interface IFilter {
     isEnabled() : boolean;
     getViewComponentType() : any;
     createFilterExpression<T>(builder : IExpressionBuilder<T>) : T;
+    prepareForView?() : void;
 }
 
 export interface IFilterParams {
@@ -69,5 +83,7 @@ export interface IFilterParams {
 
 export interface IExpressionBuilder<T> {
     contains(column : ColumnDefinition, text : string) : T,
+    equals(column : ColumnDefinition, text : string) : T,
     and(first : T, second : T) : T;
+    or(first : T, second : T) : T;
 }

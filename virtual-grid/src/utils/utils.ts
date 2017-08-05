@@ -1,6 +1,3 @@
-import { OnDestroy, ComponentFactoryResolver, ComponentFactory, ComponentRef, ViewContainerRef } from "@angular/core";
-import { Subscription as RxSubscription } from 'rxjs';
-
 export interface Subscription {
     close();
 }
@@ -15,6 +12,10 @@ export class Property<T> {
     private _value : T;
     private _subscriptions : PropertySubscription<T>[] = new Array();
 
+    constructor(value : T) {
+        this._value = value;
+    }
+
     get value() : T {
         return this._value;
     }
@@ -28,10 +29,10 @@ export class Property<T> {
         }
     }
 
-    public onChanged(subscription : PropertySubscription<T>) : Subscription {
-        this._subscriptions.push(subscription);
-        return Utils.subscription(() => {
-            var index = this._subscriptions.indexOf(subscription);
+    public onChanged(s : PropertySubscription<T>) : Subscription {
+        this._subscriptions.push(s);
+        return subscription(() => {
+            var index = this._subscriptions.indexOf(s);
             if (index >= 0) {
                 this._subscriptions.splice(index);
             }
@@ -39,7 +40,7 @@ export class Property<T> {
     }
 }
 
-export class ComponentBase implements OnDestroy {
+export class ComponentBase {
 
     private subscriptions : CompositeSubscription = new CompositeSubscription();
 
@@ -85,8 +86,8 @@ export class CompositeSubscription {
     private isClosed : boolean;
     private subscriptions : Subscription[];
 
-    constructor(...subscriptions : Subscription[]) {
-        this.subscriptions = subscriptions;
+    constructor(subscriptions? : Subscription[]) {
+        this.subscriptions = subscriptions || Array.of<Subscription>();
     }
 
     public add(subscription : Subscription) {
@@ -105,34 +106,76 @@ export class CompositeSubscription {
     }
 }
 
-export class Utils {
+export function subscription(close : () => void) : Subscription {
+    return { close : close }
+}
 
-    public static subscription(close : () => void) : Subscription {
-        return { close : close }
+export function subscribeResize(handler : (event?:any) => void) : Subscription {
+    let h = this.animationThrottled(handler);
+    window.addEventListener("resize", h);
+    return this.subscription(() => window.removeEventListener("resize", h));
+}
+
+export function subscribe(element : HTMLElement, event : keyof HTMLElementEventMap, handler : (event?:any) => void) : Subscription {
+    let h = this.animationThrottled(handler);
+    element.addEventListener(event, h)
+    return this.subscription(() => element.removeEventListener(event, h));
+}
+
+export function throttled<T>(callback : (arg:T) => void, throttleTime : number) : (arg:T) => void {
+    let currentToken : any;
+
+    return arg => {
+        let token = { };
+        currentToken = token;
+
+        if (throttleTime) {
+            setTimeout(() => {
+                if (token === currentToken) {
+                    callback(arg);
+                }
+            }, throttleTime);
+        }
     }
+}
 
-    public static subscribeResize(handler : (event?:any) => void) : Subscription {
-        let h = this.animationThrottled(handler);
-        window.addEventListener("resize", h);
-        return this.subscription(() => window.removeEventListener("resize", h));
+export function controlledThrottled<T>(callback : (arg:T) => void) : (arg:T, throttleTime? : number) => void {
+    let currentToken : any;
+
+    return (arg, throttleTime) => {
+        let token = { };
+        currentToken = token;
+
+        if (throttleTime) {
+            setTimeout(() => {
+                if (token === currentToken) {
+                    callback(arg);
+                }
+            }, throttleTime);
+        }
+        else {
+            callback(arg);
+        }
     }
+}    
 
-    public static subscribe(element : HTMLElement, event : keyof HTMLElementEventMap, handler : (event?:any) => void) : Subscription {
-        let h = this.animationThrottled(handler);
-        element.addEventListener(event, h)
-        return this.subscription(() => element.removeEventListener(event, h));
-    }
-
-    private static animationThrottled(handler : (event?:any) => void) : (event?:any) => void {
-        let running = false;
-        return e => {
-            if (!running) {
-                running = true;
-                requestAnimationFrame(function() {
-                    handler(e);
-                    running = false;
-                });
-             }
-        };
+export function animationThrottled(handler : (event?:any) => void) : (event?:any) => void {
+    let running = false;
+    return e => {
+        if (!running) {
+            running = true;
+            requestAnimationFrame(function() {
+                handler(e);
+                running = false;
+            });
+        }
     };
+};
+
+export function createStyle(name) : any {
+    var style = document.createElement('style');
+    style.type = 'text/css';
+    document.getElementsByTagName('head')[0].appendChild(style);
+    return style.sheet;
+    //(<any>style.sheet).insertRule(name+"{"+rules+"}",0);
 }

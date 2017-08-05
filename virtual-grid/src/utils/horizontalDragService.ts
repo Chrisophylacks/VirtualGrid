@@ -1,4 +1,4 @@
-import { Utils, Subscription } from './utils';
+import * as utils from '../utils/utils';
 
 export interface DragServiceParams {
     eDraggableElement: HTMLElement,
@@ -10,8 +10,8 @@ export interface DragServiceParams {
 
 export class HorizontalDragService {
 
-    public static addDragHandling(params: DragServiceParams) : Subscription {
-        return Utils.subscribe(
+    public static addDragHandling(params: DragServiceParams) : utils.Subscription {
+        return utils.subscribe(
             params.eDraggableElement,
             'mousedown', (startEvent: MouseEvent) => {
             let eBody = <HTMLElement> document.querySelector('body');

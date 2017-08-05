@@ -47,6 +47,16 @@ export class MemoryDataSource implements api.IGridDataSource {
         this.updateGrid(true);
     }
 
+    getFilterValues(column : api.ColumnDefinition) : Promise<string[]> {
+        let set = new Set<string>(this.rawData.map(x => x.data[column.field]));
+        return Promise.resolve(Array.from(set));
+    }
+
+    getSuggestions(column : api.ColumnDefinition, input : string) : Promise<string[]> {
+        let set = new Set<string>(this.rawData.map(x => x.data[column.field]));
+        return Promise.resolve(Array.from(set));
+    }
+
     setSchema(schema : api.ColumnDefinition[]) {
         this.schema = schema;
         if (this.gridApi !== undefined) {

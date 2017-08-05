@@ -16,7 +16,18 @@ export class MemoryExpressionBuilder implements api.IExpressionBuilder<Expressio
             }
     };
 
+    public equals(column : api.ColumnDefinition, text : string) : Expression {
+        return x => {
+                let value = x[column.field];
+                return value.toString() === text;
+            }
+    };
+
     public and(first : Expression, second : Expression) : Expression {
         return x => first(x) && second(x);
     }
+
+    public or(first : Expression, second : Expression) : Expression {
+        return x => first(x) || second(x);
+    }    
 }

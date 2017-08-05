@@ -8,7 +8,7 @@ import * as utils from '../utils/utils';
 import * as api from './contracts';
 
 @Component({
-  selector: 'virtual-grid',
+  selector: 'canvas-grid',
   template: `
     <div #grid class="grid" style="width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
         <div style="width:100%" [style.height]="headerHeight" style="overflow:hidden">
@@ -19,21 +19,25 @@ import * as api from './contracts';
         <menu-popup #menu></menu-popup>
         <div #viewport class="viewport" style="overflow-x:scroll;overflow-y:auto;white-space:nowrap;position:relative;flex:1 1;min-height:0px">
             <div class="fake-viewport" #fakeViewport style="position:absolute">
-                <div class="row-container" #rowContainer style="position:absolute;width:100%"></div>
+                <canvas #canvas style="position:absolute"></canvas>
             </div>
         </div>
+        <div #rowEven class="row-even" style="display:none"></div>
+        <div #rowOdd class="row-odd" style="display:none"></div>
     </div>`
 })
-export class VirtualGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
+export class CanvasGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
 
     private visibleRows : RowHandle[] = new Array();
 
-    private allColumns : Column[];
-    public visibleColumns : Column[];
+    private allColumns = Array.of<Column>();
+    public visibleColumns = Array.of<Column>();
 
     private rowCount : number = 0;
     private topIndex : number = 0;
     private _options : api.GridOptions;
+    private viewportWidth : number = 0;
+    private viewportHeight : number = 0;
     private readonly columnSubscription = new utils.SerialSubscription();
 
     @ViewChild('grid') gridRef : ElementRef;
@@ -48,10 +52,12 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
     @ViewChild('fakeViewport') fakeViewportRef : ElementRef;
     private get fakeViewport() : HTMLElement { return <HTMLElement>this.fakeViewportRef.nativeElement; }
 
-    @ViewChild('rowContainer') rowContainerRef : ElementRef;
-    private get rowContainer() : HTMLElement { return <HTMLElement>this.rowContainerRef.nativeElement; }
+    @ViewChild('canvas') canvasRef : ElementRef;
+    private get canvas() : HTMLCanvasElement { return <HTMLCanvasElement>this.canvasRef.nativeElement; }
 
     @ViewChild('menu') menu : MenuPopup;
+    @ViewChild('rowEven') rowEven : ElementRef;
+    @ViewChild('rowOdd') rowOdd : ElementRef;
 
     @Input() set gridOptions(gridOptions : api.GridOptions) {
         this._options = gridOptions;
@@ -71,6 +77,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
     public ngAfterViewInit() : void {
         utils.subscribe(this.viewport, 'scroll', () => this.onScroll());
         utils.subscribeResize(() => this.onResize());
+        this.viewportWidth = this.viewport.clientWidth;
 
         this.onResize();
         this._options.dataSource.init(this);
@@ -91,10 +98,10 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         {
             var col = new Column(x, new IconFactory(this._options.icons), this._options.dataSource);
             columnChanges.add(
-                col.width.onChanged(() => {
-                    this.updateViewportWidth();
-                    this.arrangeRows();
-                }));
+                col.width.onChanged(utils.animationThrottled(() => {
+                    this.updateViewportSize();
+                    this.redraw();
+                })));
 
             columnChanges.add(
                 col.sortDirection.onChanged(() => {
@@ -105,8 +112,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
             columnChanges.add(
                 col.isVisible.onChanged(() => {
                     this.updateVisibleColumns();
-                    this.arrangeRows();
-                    this.updateViewportWidth();
+                    this.updateViewportSize();
                     this.changeDetectorRef.detectChanges();
                     if (col.filter && col.filter.isEnabled()) {
                         this._options.dataSource.requestFilter();
@@ -114,6 +120,7 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
                     if (col.sortDirection.value !== api.SortDirection.None) {
                         this.raiseSortChange();
                     }
+                    this.redraw()
                 }));
 
             return col;
@@ -122,9 +129,9 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
         this.columnSubscription.set(columnChanges);
         this.updateVisibleColumns();
         this.updateViewport();
-
-        this.updateViewportWidth();
+        this.updateViewportSize();
         this.changeDetectorRef.detectChanges();
+        this.redraw();
     }
 
     public updateRows(rows : api.DataRow[]) {
@@ -134,9 +141,9 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
             if (adjustedIndex >= 0 && adjustedIndex < this.visibleRows.length) {
                 let row = this.visibleRows[adjustedIndex];
                 row.dataRow = dataRow;
-                this.renderRow(row);
             }
         }
+        this.redraw();
     }
 
     public buildFilterExpression<T>(builder : api.IExpressionBuilder<T>, defaultExpression :T) : T {
@@ -169,43 +176,38 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
     }
 
     private onScroll() : void {
-        let scrolLeft = this.viewport.scrollLeft;
+        let scrollLeft = this.viewport.scrollLeft;
         let scrollTop = this.viewport.scrollTop;
         this.updateViewport();
+        this.redraw();
         this.raiseRangeChange();
-        this.header.style.left = -scrolLeft + 'px';
-        this.rowContainer.style.top = scrollTop + 'px';
+        this.header.style.left = -scrollLeft + 'px';
+        this.canvas.style.top = scrollTop + 'px';
     }
 
     private onResize() : void {
         this.updateViewport();
+        this.updateViewportSize();
+        this.redraw();
         this.raiseRangeChange();
-        this.updateViewportWidth();
     }
 
-    private updateViewportWidth() : void {
+    private updateViewportSize() : void {
         let width = this.getTotalWidth() + 'px';
+        this.viewportWidth = this.viewport.clientWidth;
+        this.viewportHeight = this.viewport.clientHeight;
+        this.canvas.width = this.viewportWidth;
+        this.canvas.height = this.viewportHeight;
         this.header.style.width = width;
         this.fakeViewport.style.width = width;
     }
 
     private updateVisibleColumns() : void {
         this.visibleColumns = this.allColumns.filter(x => x.isVisible.value);
-        for (let row of this.visibleRows) {
-            for (let col of this.allColumns) {
-                let cell = row.cells.get(col.def.field);
-                if (col.isVisible.value && !cell.isIncluded) {
-                    row.nativeElement.appendChild(cell.nativeElement);
-                    cell.isIncluded = true;
-                } else if (!col.isVisible.value && cell.isIncluded) {
-                    cell.nativeElement.remove();
-                    cell.isIncluded = false;
-                }
-            }
-        }
     }
 
     private updateViewport() : void {
+
         if (this.allColumns === undefined) {
             return;
         }
@@ -233,13 +235,11 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
 
         // create/delete row handles
         if (this.visibleRows.length > visibleRowCount) {
-            for (let row of this.visibleRows.splice(visibleRowCount)) {
-                this.deleteRow(row);
-            }
+            this.visibleRows.splice(visibleRowCount);
         }
 
         while (this.visibleRows.length < visibleRowCount) {
-            this.visibleRows.push(this.createRowHandle(this.visibleRows.length));
+            this.visibleRows.push(<RowHandle>{ visibleIndex : this.visibleRows.length });
         }
 
         // update data and render
@@ -251,115 +251,54 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
             else { 
                 this.visibleRows[i].dataRow = undefined;
             }
-            this.renderRow(this.visibleRows[i]);
         }
-
-        this.rowContainer.style.height = (visibleRowCount * this._options.rowHeight) + 'px';
     }
 
-    private invalidateAllRows() : void {
+    private redraw() : void {
+        let context = this.canvas.getContext('2d');
+        let gridStyle = getComputedStyle(this.gridRef.nativeElement)
+        context.font = gridStyle.font;
+        let top = 0;
+        let fitter = new TextFitter(context);
+        let textShift = this._options.rowHeight - (this._options.rowHeight - parseInt(gridStyle.fontSize));
+        context.clearRect(0, 0, this.viewportWidth, this.viewportHeight)
         for (let row of this.visibleRows) {
-            row.dataRow = undefined;
-            this.renderRow(row);
-        }
-    }
 
-    private arrangeRows() : void {
-        for (var row of this.visibleRows) {
-            this.arrangeRow(row);
-        }
-    }
-    
-    private deleteRow(row : RowHandle) {
-        (<HTMLElement>this.rowContainer).removeChild(row.nativeElement);
-    }
-
-    private renderRow(row : RowHandle) {
-        let rowClass = '';
-        if (this._options.rowAlternationMode !== undefined && this._options.rowAlternationMode !== api.RowAlternationMode.None) {
-            let alternationIndex = this._options.rowAlternationMode === api.RowAlternationMode.DataIndex
-                ? this.topIndex + row.visibleIndex
-                : row.visibleIndex;
-            rowClass = alternationIndex % 2 == 0 ? 'row-even' : 'row-odd';
-        }
-
-        if (row.lastClass != rowClass) {
-            if (row.lastClass != '') {
-                row.nativeElement.classList.remove(row.lastClass);
-            }
-            row.lastClass = rowClass;
-            row.nativeElement.classList.add(row.lastClass = rowClass);
-        }
-
-        for (let column of this.allColumns) {
-            let cell = row.cells.get(column.def.field);
-            if (cell === undefined) {
-                continue;
+            let rowStyle : CSSStyleDeclaration;
+            if (this._options.rowAlternationMode !== undefined && this._options.rowAlternationMode !== api.RowAlternationMode.None) {
+                let alternationIndex = this._options.rowAlternationMode === api.RowAlternationMode.DataIndex
+                    ? this.topIndex + row.visibleIndex
+                    : row.visibleIndex;
+                rowStyle = getComputedStyle(alternationIndex % 2 == 0 ? this.rowEven.nativeElement : this.rowOdd.nativeElement);
             }
 
-            //cell.nativeElement.innerText = column.formatText(row.dataRow);
-            cell.textNode.textContent = column.formatText(row.dataRow);
-            let cellClass = column.getClass(row.dataRow) || '';
-            if (cellClass !== cell.lastClass) {
-                if (cell.lastClass != '') {
-                    cell.nativeElement.classList.remove(cell.lastClass);
-                }
-                cell.lastClass = cellClass;
-                if (cell.lastClass != '') {
-                    cell.nativeElement.classList.add(cellClass);
-                }
-            }
-        }
-    }
-
-    private createRowHandle(visibleIndex : number) {
-        let element = this.createElement(`<div class="row" style="height:${this._options.rowHeight}px;position:absolute;top:${visibleIndex*this._options.rowHeight}px;width:100%"></div>`);
-
-        let cells = new Map<string, CellHandle>();
-        for (var column of this.allColumns) {
-            let cell = <HTMLElement>document.createElement("div");
-            cell.classList.add('cell');
-            let textNode = document.createTextNode('');
-            cell.appendChild(textNode);
-
-            if (column.isVisible.value) {
-                element.appendChild(cell);
+            if (rowStyle) {
+                context.fillStyle = rowStyle.backgroundColor;
+                context.fillRect(0, top, this.viewportWidth, this._options.rowHeight);
+                context.fillStyle = 'rgb(0,0,0)';
             }
 
-            cells.set(column.def.field,
-                {
-                    lastClass : '',
-                    nativeElement : <HTMLElement>cell,
-                    textNode : textNode,
-                    isIncluded : column.isVisible.value
-                });
+            let left = 0;
+            for (let col of this.visibleColumns) {
+                let text = col.formatText(row.dataRow);
+                context.fillText(fitter.fitString(text, col.width.value - 2), left + 1.5, top + textShift);
+                left += col.width.value;
+            }
+            top += this._options.rowHeight;
         }
 
-        var rowHandle = {
-            nativeElement : element,
-            cells : cells,
-            lastClass : '',
-            visibleIndex : visibleIndex
-        };
-        this.arrangeRow(rowHandle);
-        (<HTMLElement>this.rowContainer).appendChild(rowHandle.nativeElement);
-        return rowHandle;
-    }
-
-    private arrangeRow(row : RowHandle) {
-        var offset = 0;
-        for (var column of this.visibleColumns) {
-            let cell = row.cells.get(column.def.field).nativeElement;
-            cell.style.width = column.width.value + 'px';
-            cell.style.left = offset + 'px';
-            offset += column.width.value;
+        let left = 0;
+        context.setLineDash([1, 1]);
+        context.lineWidth = 1;
+        context.strokeStyle = '#808080';
+        for (let col of this.visibleColumns) {
+            context.beginPath();
+            context.moveTo(left + col.width.value - 0.5, 0);
+            context.lineTo(left + col.width.value - 0.5, this.viewportHeight);
+            context.stroke();
+            left += col.width.value;
         }
-    }
-
-    private createElement(html : string) : HTMLElement {
-        var tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        return <HTMLElement>tempDiv.firstChild;
+        context.setLineDash([]);
     }
 
     private getTotalWidth() : number {
@@ -385,16 +324,32 @@ export class VirtualGridComponent extends utils.ComponentBase implements AfterVi
 }
 
 interface RowHandle {
-    lastClass : string;
     visibleIndex : number;
     dataRow? : api.DataRow;
-    nativeElement : HTMLElement;
-    cells : Map<string, CellHandle>;
 }
 
-interface CellHandle {
-    lastClass : string;
-    nativeElement : HTMLElement;
-    textNode : Node;
-    isIncluded : boolean;
+class TextFitter {
+    private readonly ellipsis : '…';
+    private readonly ellipsisWidth : number;
+
+    constructor(private readonly context : CanvasRenderingContext2D) {
+        this.ellipsisWidth = context.measureText(this.ellipsis).width;
+    }
+
+    public fitString(str : string, maxWidth : number) : string {
+        var width = this.context.measureText(str).width;
+        if (width <= maxWidth) {
+            return str;
+        }
+        if (width <= this.ellipsisWidth) {
+            return '';
+        }
+
+        var len = str.length;
+        while (width>=maxWidth-this.ellipsisWidth && len-->0) {
+            str = str.substring(0, len);
+            width = this.context.measureText(str).width;
+        }
+        return str + this.ellipsis;
+    }    
 }

@@ -1,17 +1,25 @@
+import * as utils from '../utils/utils';
+
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, ComponentFactoryResolver, ComponentFactory, ViewContainerRef, ComponentRef } from "@angular/core";
 import { HorizontalDragService } from '../utils/horizontaldragservice';
-import { ComponentBase, Utils, Property } from '../utils/utils';
 import { IMenuPopup } from './menu-popup';
+import { IconFactory } from '../utils/icons';
 import * as api from './contracts';
 
 export class Column {
-    public width : Property<number> = new Property<number>();
-    public sortDirection : Property<api.SortDirection> = new Property<api.SortDirection>();
+    public width : utils.Property<number>;
+    public isVisible : utils.Property<boolean>;
+    public sortDirection : utils.Property<api.SortDirection>;
     public filter : api.IFilter | undefined;
 
-    constructor(public readonly def : api. ColumnDefinition, dataSource : api.IGridDataSource) {
-        this.width.value = (def.width || 100);
-        this.sortDirection.value = api.SortDirection.None;
+    constructor(
+        public readonly def : api. ColumnDefinition,
+        public readonly iconFactory : IconFactory,
+        dataSource : api.IGridDataSource
+        ) {
+        this.width = new utils.Property<number>(def.width || 100);
+        this.isVisible = new utils.Property<boolean>(true);
+        this.sortDirection = new utils.Property<number>(api.SortDirection.None);
         if (def.filterFactory) {
             this.filter = def.filterFactory(
                 {
@@ -72,11 +80,11 @@ export class Column {
         <div #resizeGrip class="resize-grip" style="float:right"></div>
         <div *ngIf="column.sortDirection.value == 1" style="float:left">▲</div>
         <div *ngIf="column.sortDirection.value == 2" style="float:left">▼</div>
-        <div *ngIf="column.filter" cl #filterButton [class]="filterClass" (click)="filter()">F</div>
+        <div *ngIf="column.filter" cl #filterButton [class]="filterClass" (click)="filter()"></div>
         <div class="column-header-text" (click)="sort()">{{currentTitle}}</div>
     </div>`
 })
-export class ColumnHeader extends ComponentBase implements AfterViewInit {
+export class ColumnHeader extends utils.ComponentBase implements AfterViewInit {
     @Input() menu : IMenuPopup;
 
     @Input() column : Column;
@@ -109,6 +117,7 @@ export class ColumnHeader extends ComponentBase implements AfterViewInit {
         return this.column.filter.isEnabled() ? 'filter' : 'filter filter-inactive';
     }
     public ngAfterViewInit() : void {
+        (<HTMLElement>this.filterButtonRef.nativeElement).innerHTML = this.column.iconFactory.getIcon('filter');
         this.initResize();
     }
 
@@ -122,6 +131,10 @@ export class ColumnHeader extends ComponentBase implements AfterViewInit {
 
     public filter() {
         if (this.column.filter !== undefined) {
+            if (this.column.filter.prepareForView) {
+                this.column.filter.prepareForView();
+            }
+            
             let origin = this.filterButtonRef.nativeElement;
             this.menu.show(
                 this.column.filter.getViewComponentType(),
