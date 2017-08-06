@@ -172,10 +172,17 @@ export function animationThrottled(handler : (event?:any) => void) : (event?:any
     };
 };
 
-export function createStyle(name) : any {
-    var style = document.createElement('style');
-    style.type = 'text/css';
-    document.getElementsByTagName('head')[0].appendChild(style);
-    return style.sheet;
-    //(<any>style.sheet).insertRule(name+"{"+rules+"}",0);
+export class UpdateLock {
+    private count : number = 0;
+
+    constructor(private readonly onExit : () => void) {
+    }
+
+    public execute(action : () => void) : void {
+        this.count++;
+        action();
+        if (--this.count == 0) {
+            this.onExit();
+        }
+    }
 }

@@ -1,8 +1,9 @@
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, Output } from "@angular/core";
 import { HorizontalDragService } from '../utils/horizontaldragservice';
-import { Column } from './column-header';
+import { Column } from './column';
 import { MenuPopup } from './menu-popup';
 import { IconFactory } from '../utils/icons';
+import { Truncator } from '../utils/truncator';
 
 import * as utils from '../utils/utils';
 import * as api from './contracts';
@@ -13,7 +14,7 @@ import * as api from './contracts';
     <div #grid class="grid" style="width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
         <div style="width:100%" [style.height]="headerHeight" style="overflow:hidden">
             <div #header class="header" style="position:relative;height:100%">
-                <vcolumn-header *ngFor="let col of visibleColumns" [column]="col" [menu]="menu" class="column-header-container"></vcolumn-header>
+                <vcolumn-header *ngFor="let col of visibleColumns" [column]="col" [iconFactory]="iconFactory" [menu]="menu" class="column-header-container"></vcolumn-header>
             </div>
         </div>
         <menu-popup #menu></menu-popup>
@@ -28,17 +29,16 @@ import * as api from './contracts';
 })
 export class CanvasGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
 
-    private visibleRows : RowHandle[] = new Array();
-
+    private visibleRows = Array.of<Dirtable<api.DataRow>>();
     private allColumns = Array.of<Column>();
     public visibleColumns = Array.of<Column>();
+    private rowCache = new Map<number, api.DataRow>()
 
-    private rowCount : number = 0;
-    private topIndex : number = 0;
     private _options : api.GridOptions;
-    private viewportWidth : number = 0;
-    private viewportHeight : number = 0;
+
     private readonly columnSubscription = new utils.SerialSubscription();
+
+    private readonly updateLock : utils.UpdateLock;
 
     @ViewChild('grid') gridRef : ElementRef;
     private get grid() : HTMLElement { return <HTMLElement>this.gridRef.nativeElement; }
@@ -64,86 +64,117 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         this._options.api = this;
     }
 
-    constructor(
-        private readonly changeDetectorRef: ChangeDetectorRef) {
-        super();
-        this.anchor(this.columnSubscription);
-    }
-
     public get headerHeight() : string {
         return this._options.rowHeight  + 'px';
     }
 
+    public iconFactory = new IconFactory(() => {
+        if (!this._options) {
+            return undefined;
+        }
+        return this._options.icons;
+    });
+
+    private readonly dirtables = new DirtableContainer();
+    private readonly viewportWidth = this.dirtables.register();
+    private readonly viewportHeight = this.dirtables.register();
+    private readonly topRowIndex = this.dirtables.register();
+    private readonly rowCount = this.dirtables.register();
+    private readonly visibleRowsCount = this.dirtables.register();
+    private readonly viewportLeftOffset = this.dirtables.register();
+    private readonly viewportTopOffset = this.dirtables.register();
+    private readonly totalWidth = this.dirtables.register();
+    private readonly sort = this.dirtables.register();
+    private redrawAll = true;
+
+    constructor(
+        private readonly changeDetectorRef: ChangeDetectorRef) {
+        super();
+        this.anchor(this.columnSubscription);
+        this.updateLock = new utils.UpdateLock(() => this.flushUpdates());
+    }
+
     public ngAfterViewInit() : void {
         utils.subscribe(this.viewport, 'scroll', () => this.onScroll());
+        utils.subscribe(this.canvas, 'mousemove', (e) => this.onMouseMove(e));
+        utils.subscribe(this.canvas, 'mouseleave', () => this.onMouseLeave());
         utils.subscribeResize(() => this.onResize());
-        this.viewportWidth = this.viewport.clientWidth;
 
-        this.onResize();
-        this._options.dataSource.init(this);
+        this.updateLock.execute(() =>
+        {
+            this.onResize();
+            this.onScroll();
+            this._options.dataSource.init(this);
+        });
     }
 
     public setRowCount(rowCount : number) {
-        if (this.rowCount !== rowCount) {
-            this.rowCount = rowCount;
-            this.updateViewport();
-            this.fakeViewport.style.height =  (this._options.rowHeight * (this.rowCount + 1) - 1) + 'px';
-            this.raiseRangeChange();
-        }
+        this.updateLock.execute(() =>
+        {
+            this.rowCount.update(rowCount);
+        });
     }
 
     public setColumns(columns : api.ColumnDefinition[]) : void {
-        let columnChanges = new utils.CompositeSubscription();
-        this.allColumns = columns.map(x =>
+        this.updateLock.execute(() =>
         {
-            var col = new Column(x, new IconFactory(this._options.icons), this._options.dataSource);
-            columnChanges.add(
-                col.width.onChanged(utils.animationThrottled(() => {
-                    this.updateViewportSize();
-                    this.redraw();
-                })));
+            let columnChanges = new utils.CompositeSubscription();
+            this.allColumns = columns.map(x =>
+            {
+                var col = new Column(x,  this._options.dataSource);
+                columnChanges.add(
+                    col.width.onChanged(utils.animationThrottled(() => {
+                        this.updateLock.execute(() =>
+                        {
+                            this.updateTotalWidth();
+                        })
+                    })));
 
-            columnChanges.add(
-                col.sortDirection.onChanged(() => {
-                    // this.invalidateAllRows(); // TODO: decide if this is necessary
-                    this.raiseSortChange();
-                }));
+                columnChanges.add(
+                    col.sortDirection.onChanged(() => {
+                        // this.invalidateAllRows(); // TODO: decide if this is necessary
+                        this.updateLock.execute(() => this.sort.setDirty());
+                    }));
 
-            columnChanges.add(
-                col.isVisible.onChanged(() => {
-                    this.updateVisibleColumns();
-                    this.updateViewportSize();
-                    this.changeDetectorRef.detectChanges();
-                    if (col.filter && col.filter.isEnabled()) {
-                        this._options.dataSource.requestFilter();
-                    }
-                    if (col.sortDirection.value !== api.SortDirection.None) {
-                        this.raiseSortChange();
-                    }
-                    this.redraw()
-                }));
+                columnChanges.add(
+                    col.isVisible.onChanged(() => {
+                        this.updateLock.execute(() => {
 
-            return col;
+                            this.updateVisibleColumns();
+                            this.updateTotalWidth();
+                            this.changeDetectorRef.detectChanges();
+
+                            if (col.filter && col.filter.isEnabled()) {
+                                this._options.dataSource.requestFilter();
+                            }
+                            if (col.sortDirection.value !== api.SortDirection.None) {
+                                this.sort.setDirty();
+                            }
+                        });
+                    }));
+
+                return col;
+            });
+
+            this.columnSubscription.set(columnChanges);
+            this.updateVisibleColumns();
+            this.changeDetectorRef.detectChanges();
         });
-
-        this.columnSubscription.set(columnChanges);
-        this.updateVisibleColumns();
-        this.updateViewport();
-        this.updateViewportSize();
-        this.changeDetectorRef.detectChanges();
-        this.redraw();
     }
 
     public updateRows(rows : api.DataRow[]) {
-        let maxIndex = this.topIndex + this.visibleRows.length - 1;
-        for (let dataRow of rows) {
-            let adjustedIndex = dataRow.index - this.topIndex;
-            if (adjustedIndex >= 0 && adjustedIndex < this.visibleRows.length) {
-                let row = this.visibleRows[adjustedIndex];
-                row.dataRow = dataRow;
+        this.updateLock.execute(() =>
+        {
+            this.rowCache.clear();
+            for (let dataRow of rows) {
+                let adjustedIndex = dataRow.index - this.topRowIndex.value;
+                if (adjustedIndex >= 0 && adjustedIndex < this.visibleRows.length) {
+                    this.visibleRows[adjustedIndex].update(dataRow);
+                } else {
+                    this.rowCache.set(dataRow.index, dataRow.data);
+                }
             }
-        }
-        this.redraw();
+        })
     }
 
     public buildFilterExpression<T>(builder : api.IExpressionBuilder<T>, defaultExpression :T) : T {
@@ -171,65 +202,141 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         return undefined;
     }    
 
-    public ngOnDestroy() {
-        super.ngOnDestroy();
+    private updateVisibleColumns() : void {
+        this.visibleColumns = this.allColumns.filter(x => x.isVisible.value);
+        this.redrawAll = true;
+    }
+
+    private updateTotalWidth() : void {
+        var totalWidth : number = 0;
+        if (this.visibleColumns) {
+            for (var column of this.visibleColumns) {
+                totalWidth += column.width.value;
+            }
+        }
+        this.totalWidth.update(totalWidth);
+        this.redrawAll = true;
     }
 
     private onScroll() : void {
-        let scrollLeft = this.viewport.scrollLeft;
-        let scrollTop = this.viewport.scrollTop;
-        this.updateViewport();
-        this.redraw();
-        this.raiseRangeChange();
-        this.header.style.left = -scrollLeft + 'px';
-        this.canvas.style.top = scrollTop + 'px';
+        this.updateLock.execute(() =>
+        {
+            this.viewportLeftOffset.update(this.viewport.scrollLeft);
+            this.viewportTopOffset.update(this.viewport.scrollTop);
+            this.topRowIndex.update(Math.floor(this.viewport.scrollTop / this._options.rowHeight));
+        });        
     }
 
     private onResize() : void {
-        this.updateViewport();
-        this.updateViewportSize();
-        this.redraw();
-        this.raiseRangeChange();
+        this.updateLock.execute(() =>
+        {
+            this.viewportWidth.update(this.viewport.clientWidth);
+            this.viewportHeight.update(this.viewport.clientHeight);
+            this.redrawAll = true;
+        });
     }
 
-    private updateViewportSize() : void {
-        let width = this.getTotalWidth() + 'px';
-        this.viewportWidth = this.viewport.clientWidth;
-        this.viewportHeight = this.viewport.clientHeight;
-        this.canvas.width = this.viewportWidth;
-        this.canvas.height = this.viewportHeight;
-        this.header.style.width = width;
-        this.fakeViewport.style.width = width;
+    private onMouseMove(e : MouseEvent) : void {
+        this.updateLock.execute(() =>
+        {
+            this.updateHoverRow(Math.floor((e.pageY - this.getTotalCanvasTopOffset()) / this._options.rowHeight));
+        });
     }
 
-    private updateVisibleColumns() : void {
-        this.visibleColumns = this.allColumns.filter(x => x.isVisible.value);
+    private onMouseLeave() : void {
+        this.updateLock.execute(() =>
+        {
+            this.updateHoverRow(undefined);
+        });
     }
 
-    private updateViewport() : void {
+    private hoverRowIndex : number;
 
-        if (this.allColumns === undefined) {
+    private updateHoverRow(index : number) : void {
+        let actualIndex = index < 0 || index > this.visibleRows.length ? undefined : index;
+        if (this.hoverRowIndex !== actualIndex) {
+            if (this.hoverRowIndex >= 0 && this.hoverRowIndex < this.visibleRows.length) {
+                this.visibleRows[this.hoverRowIndex].setDirty();
+            }
+            if (actualIndex < this.visibleRows.length) {
+                this.visibleRows[actualIndex].setDirty();
+            }
+            this.hoverRowIndex = actualIndex;
+        }
+    }
+
+    private flushUpdates() : void {
+        this.createVirtualRows();
+
+        // raise data source events
+        if (this.topRowIndex.isDirty || this.visibleRowsCount.isDirty) {
+            this.topRowIndex.clear();
+            this.visibleRowsCount.clear();
+            this._options.dataSource.requestRange(<api.RowRange>{
+                startIndex : this.topRowIndex.value,
+                count : this.visibleRowsCount.value
+            });
+        }
+        if (this.sort.isDirty) {
+            this._options.dataSource.requestSort(
+                this.visibleColumns
+                    .filter(c => c.sortDirection.value !== api.SortDirection.None)
+                    .map(c => <api.ColumnSort>{ column : c.def, sortDirection : c.sortDirection.value }));
+        }
+
+        // update element sizes and positions
+        if (this.rowCount.isDirty) {
+            this.fakeViewport.style.height = (this._options.rowHeight * (this.rowCount.value + 1) - 1) + 'px';
+        }
+        if (this.viewportTopOffset.isDirty) {
+            this.canvas.style.top = this.viewportTopOffset.value + 'px';
+        }
+        if (this.viewportLeftOffset.isDirty) {
+            this.header.style.left = -this.viewportLeftOffset.value + 'px';
+        };
+        if (this.totalWidth.isDirty) {
+            this.header.style.width = this.totalWidth.value + 'px';
+            this.fakeViewport.style.width = this.totalWidth.value + 'px';
+        }
+
+        // prepare canvas for drawing
+        if (this.viewportWidth.isDirty) {
+            this.canvas.width = this.viewportWidth.value;
+        }
+
+        if (this.viewportHeight.isDirty) {
+            this.canvas.height = this.viewportHeight.value;
+        }
+
+        // draw
+        if (this.redrawAll || this.visibleRows.find(x => x.isDirty)) {
+            this.redraw();
+        }
+
+        this.dirtables.clear();
+    }
+
+    private createVirtualRows() : void {
+
+        let visibleRowCount = this.visibleRows.length;
+
+        if (this.topRowIndex.isDirty || this.viewportHeight.isDirty || this.rowCount.isDirty) {
+            let maxVisibleRows = Math.ceil(this.viewportHeight.value / this._options.rowHeight);
+            let maxIndex = Math.min(this.topRowIndex.value + maxVisibleRows - 1, this.rowCount.value - 1);
+            visibleRowCount = maxIndex - this.topRowIndex.value + 1;
+        }
+
+        if (this.visibleRows.length === visibleRowCount) {
             return;
         }
 
-        var vOffset = this.viewport.scrollTop;
-        var topIndex = Math.floor(vOffset / this._options.rowHeight);
-
-        var maxVisibleRows = Math.ceil(this.viewport.clientHeight / this._options.rowHeight);
-        var maxIndex = Math.min(topIndex + maxVisibleRows - 1, this.rowCount - 1);
-        var visibleRowCount = maxIndex - topIndex + 1;
-
-        if (this.topIndex === topIndex && this.visibleRows.length === visibleRowCount) {
-            return;
-        }
-
-        this.topIndex = topIndex;
+        this.visibleRowsCount.update(visibleRowCount);
 
         // cache existing data
-        var dataMap = new Map<number, api.DataRow>();
         for (let row of this.visibleRows) {
-            if (row.dataRow !== undefined) {
-                dataMap.set(row.dataRow.index, row.dataRow);
+            let dataRow = row.value.data;
+            if (dataRow !== undefined) {
+                this.rowCache.set(dataRow.index, dataRow);
             }
         }
 
@@ -239,18 +346,13 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         }
 
         while (this.visibleRows.length < visibleRowCount) {
-            this.visibleRows.push(<RowHandle>{ visibleIndex : this.visibleRows.length });
+            this.visibleRows.push(new Dirtable<api.DataRow>());
         }
 
-        // update data and render
+        // update data
+        let topIndex = this.topRowIndex.value;
         for (let i = 0; i < visibleRowCount; ++i) {
-            let cachedRow = dataMap.get(topIndex + i);
-            if (cachedRow !== undefined) {
-                this.visibleRows[i].dataRow = cachedRow;
-            }
-            else { 
-                this.visibleRows[i].dataRow = undefined;
-            }
+            this.visibleRows[i].update(this.rowCache.get(topIndex + i));
         }
     }
 
@@ -258,34 +360,52 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         let context = this.canvas.getContext('2d');
         let gridStyle = getComputedStyle(this.gridRef.nativeElement)
         context.font = gridStyle.font;
-        let top = 0;
-        let fitter = new TextFitter(context);
+        let fitter = new Truncator(context);
         let textShift = this._options.rowHeight - (this._options.rowHeight - parseInt(gridStyle.fontSize));
-        context.clearRect(0, 0, this.viewportWidth, this.viewportHeight)
-        for (let row of this.visibleRows) {
 
-            let rowStyle : CSSStyleDeclaration;
-            if (this._options.rowAlternationMode !== undefined && this._options.rowAlternationMode !== api.RowAlternationMode.None) {
-                let alternationIndex = this._options.rowAlternationMode === api.RowAlternationMode.DataIndex
-                    ? this.topIndex + row.visibleIndex
-                    : row.visibleIndex;
-                rowStyle = getComputedStyle(alternationIndex % 2 == 0 ? this.rowEven.nativeElement : this.rowOdd.nativeElement);
-            }
-
-            if (rowStyle) {
-                context.fillStyle = rowStyle.backgroundColor;
-                context.fillRect(0, top, this.viewportWidth, this._options.rowHeight);
-                context.fillStyle = 'rgb(0,0,0)';
-            }
-
-            let left = 0;
-            for (let col of this.visibleColumns) {
-                let text = col.formatText(row.dataRow);
-                context.fillText(fitter.fitString(text, col.width.value - 2), left + 1.5, top + textShift);
-                left += col.width.value;
-            }
-            top += this._options.rowHeight;
+        if (this.redrawAll) {
+            context.clearRect(0, 0, this.viewportWidth.value, this.viewportHeight.value);
         }
+
+        this.visibleRows.forEach((row, i) =>
+        {
+            if (row.isDirty || this.redrawAll) {
+                let dataRow = row.value;
+                row.clear();
+                let background : string;
+                if (i === this.hoverRowIndex) {
+                    background = 'rgb(0,0,255)';
+                } else {
+                    let rowStyle : CSSStyleDeclaration;
+                    if (this._options.rowAlternationMode !== undefined && this._options.rowAlternationMode !== api.RowAlternationMode.None) {
+                        let alternationIndex = this._options.rowAlternationMode === api.RowAlternationMode.DataIndex
+                            ? this.topRowIndex.value + i
+                            : i;
+                        rowStyle = getComputedStyle(alternationIndex % 2 == 0 ? this.rowEven.nativeElement : this.rowOdd.nativeElement);
+                    }
+
+                    if (rowStyle) {
+                        background = rowStyle.backgroundColor;
+                    }
+                }
+
+                let top = i * this._options.rowHeight;
+                if (background) {
+                    context.fillStyle = background;
+                    context.fillRect(0, top, this.viewportWidth.value, this._options.rowHeight);
+                }
+
+                context.fillStyle = 'rgb(0,0,0)';
+                let left = 0;
+                for (let col of this.visibleColumns) {
+                    let text = col.formatText(dataRow);
+                    context.fillText(fitter.fitString(text, col.width.value - 2), left + 1.5, top + textShift);
+                    left += col.width.value;
+                }
+            }
+        });
+
+        this.redrawAll = false;
 
         let left = 0;
         context.setLineDash([1, 1]);
@@ -294,62 +414,67 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         for (let col of this.visibleColumns) {
             context.beginPath();
             context.moveTo(left + col.width.value - 0.5, 0);
-            context.lineTo(left + col.width.value - 0.5, this.viewportHeight);
+            context.lineTo(left + col.width.value - 0.5, this.viewportHeight.value);
             context.stroke();
             left += col.width.value;
         }
         context.setLineDash([]);
     }
 
-    private getTotalWidth() : number {
-        var res : number = 0;
-        if (this.visibleColumns) {
-            for (var column of this.visibleColumns) {
-                res += column.width.value;
-            }
+    private getTotalCanvasTopOffset() : number {
+        let cur = 0;
+        let obj = <HTMLElement>this.viewport;
+        if (obj.offsetParent) {
+            do {
+                cur += obj.offsetTop;
+            } while (obj = <HTMLElement>obj.offsetParent);
         }
-        return res;
-    }
-
-    private raiseRangeChange() {
-        this._options.dataSource.requestRange({ startIndex : this.topIndex, count : this.visibleRows.length });
-    }
-
-    private raiseSortChange() {
-        this._options.dataSource.requestSort(
-            this.visibleColumns
-                .filter(c => c.sortDirection.value !== api.SortDirection.None)
-                .map(c => <api.ColumnSort>{ column : c.def, sortDirection : c.sortDirection.value }));
+        return cur;
     }
 }
 
-interface RowHandle {
-    visibleIndex : number;
-    dataRow? : api.DataRow;
-}
+class DirtableContainer {
 
-class TextFitter {
-    private readonly ellipsis : '…';
-    private readonly ellipsisWidth : number;
+    private dirtables = Array.of<Dirtable<number>>();
 
-    constructor(private readonly context : CanvasRenderingContext2D) {
-        this.ellipsisWidth = context.measureText(this.ellipsis).width;
+    public register() : Dirtable<number> {
+        let d = new Dirtable<number>()
+        this.dirtables.push(d);
+        return d;
     }
 
-    public fitString(str : string, maxWidth : number) : string {
-        var width = this.context.measureText(str).width;
-        if (width <= maxWidth) {
-            return str;
+    public clear() : void {
+        for (let d of this.dirtables) {
+            d.clear();
         }
-        if (width <= this.ellipsisWidth) {
-            return '';
-        }
+    }
+}
 
-        var len = str.length;
-        while (width>=maxWidth-this.ellipsisWidth && len-->0) {
-            str = str.substring(0, len);
-            width = this.context.measureText(str).width;
+class Dirtable<T> {
+    private _value : T;
+    private _isDirty : boolean;
+    private readonly comparer;
+
+    public get isDirty() {
+        return this._isDirty;
+    }
+
+    public get value() : T {
+        return this._value;
+    }
+
+    public update(value : T) : void {
+        if (this._value !== value) {
+            this._value = value;
+            this._isDirty = true;
         }
-        return str + this.ellipsis;
-    }    
+    }
+
+    public setDirty() : void {
+        this._isDirty = true;
+    }
+
+    public clear() : void {
+        this._isDirty = false;
+    }
 }

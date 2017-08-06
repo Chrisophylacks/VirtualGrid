@@ -8,12 +8,14 @@ export class DefaultIconSet {
 export class IconFactory {
     private readonly defaultIconSet = new DefaultIconSet();
 
-    public constructor(private readonly icons : api.IconSet) {
+    public constructor(private readonly getIcons : () => api.IconSet) {
     }
 
     public getIcon(iconName : keyof api.IconSet) : string {
-        if (this.icons) {
-            let factory = this.icons[iconName];
+        let icons = this.getIcons();
+
+        if (icons) {
+            let factory = icons[iconName];
             if (factory) {
                 return factory;
             }
