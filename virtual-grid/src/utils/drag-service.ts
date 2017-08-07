@@ -4,11 +4,11 @@ export interface DragServiceParams {
     eDraggableElement: HTMLElement,
     cursor: string,
     startAfterPixels: number,
-    onDragStart: (event?: MouseEvent)=>void,
-    onDragging: (delta: number, finished: boolean)=>void
+    onDragStart: (event?: MouseEvent) => void,
+    onDragging: (e: MouseEvent, dx: number, dy : number, finished: boolean) => void
 }
 
-export class HorizontalDragService {
+export class DragService {
 
     public static addDragHandling(params: DragServiceParams) : utils.Subscription {
         return utils.subscribe(
@@ -28,6 +28,7 @@ class DragInstance {
 
     private startEvent: MouseEvent;
     private dragStartX: number;
+    private dragStartY: number;
     private eDragParent: HTMLElement;
 
     private oldBodyCursor: string;
@@ -35,7 +36,8 @@ class DragInstance {
     private oldMsUserSelect: string;
     private oldWebkitUserSelect: string;
 
-    private lastDelta = 0;
+    private lastDeltaX = 0;
+    private lastDeltaY = 0;
     private params: DragServiceParams;
     private draggingStarted: boolean;
 
@@ -45,6 +47,7 @@ class DragInstance {
         this.eDragParent = eBody;
 
         this.dragStartX = startEvent.clientX;
+        this.dragStartY = startEvent.clientY;
         this.startEvent = startEvent;
 
         this.eDragParent.addEventListener('mousemove', this.mouseMove);
@@ -79,36 +82,38 @@ class DragInstance {
 
     private onMouseMove(moveEvent: MouseEvent): void {
         var newX = moveEvent.clientX;
-        this.lastDelta = newX - this.dragStartX;
+        var newY = moveEvent.clientY;
+        this.lastDeltaX = newX - this.dragStartX;
+        this.lastDeltaY = newY - this.dragStartY;
 
         if (!this.draggingStarted) {
-            var dragExceededStartAfterPixels = Math.abs(this.lastDelta) >= this.params.startAfterPixels;
+            var dragExceededStartAfterPixels = (Math.abs(this.lastDeltaX) >= this.params.startAfterPixels) ||(Math.abs(this.lastDeltaY) >= this.params.startAfterPixels);
             if (dragExceededStartAfterPixels) {
                 this.startDragging();
             }
         }
 
         if (this.draggingStarted) {
-            this.params.onDragging(this.lastDelta, false);
+            this.params.onDragging(moveEvent, this.lastDeltaX, this.lastDeltaY, false);
         }
     }
 
-    private onMouseUp(): void {
-        this.stopDragging();
+    private onMouseUp(moveEvent: MouseEvent): void {
+        this.stopDragging(moveEvent);
     }
 
-    private onMouseLeave(): void {
-        this.stopDragging();
+    private onMouseLeave(moveEvent: MouseEvent): void {
+        this.stopDragging(moveEvent);
     }
 
-    private stopDragging() {
+    private stopDragging(moveEvent: MouseEvent) {
         // reset cursor back to original cursor, if they were changed in the first place
         if (this.draggingStarted) {
             //this.params.eBody.style.cursor = this.oldBodyCursor;
             this.eDragParent.style.cursor = this.oldParentCursor;
             this.eDragParent.style.msUserSelect = this.oldMsUserSelect;
             this.eDragParent.style.webkitUserSelect = this.oldWebkitUserSelect;
-            this.params.onDragging(this.lastDelta, true);
+            this.params.onDragging(moveEvent, this.lastDeltaX, this.lastDeltaY, true);
         }
         // always remove the listeners, as these are always added
         this.eDragParent.removeEventListener('mousemove', this.mouseMove);

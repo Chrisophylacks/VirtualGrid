@@ -36,6 +36,7 @@
     display: block;
     white-space: nowrap;
     user-select: none;
+    cursor: move;
 }
 
 .column-header-container {
@@ -63,6 +64,14 @@
 }
 
 .column-filter {
+    padding: 4px;
+    background: white;
+    border: 1px solid black;
+    position: absolute;
+    z-index: 1
+}
+
+.column-chooser {
     padding: 4px;
     background: white;
     border: 1px solid black;

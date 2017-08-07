@@ -172,6 +172,25 @@ export function animationThrottled(handler : (event?:any) => void) : (event?:any
     };
 };
 
+export function getTotalOffset(element : HTMLElement) : { x : number, y : number } {
+    let curX = 0;
+    let curY = 0;
+    let obj = element;
+    if (obj.offsetParent) {
+        do {
+            curX += obj.offsetLeft;
+            curY += obj.offsetTop
+        } while (obj = <HTMLElement>obj.offsetParent);
+    }
+    return { x : curX, y : curY };
+}
+
+export function createHtml(html : string) : HTMLElement {
+    let element = document.createElement('div');
+    element.innerHTML = html;
+    return <HTMLElement>element.firstChild;
+}
+
 export class UpdateLock {
     private count : number = 0;
 

@@ -3,7 +3,6 @@ import * as api from '../grid/contracts';
 
 export abstract class FilterBase implements api.IFilter {
 
-    private requestToken : any;
     private requestFilter : (arg : void, time? : number) => void;
 
     constructor(protected readonly params : api.IFilterParams) {

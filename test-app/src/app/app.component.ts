@@ -7,8 +7,10 @@ import * as api from 'virtual-grid';
   styleUrls: ['./app.component.css']
 })
 export class AppComponent implements AfterViewInit {
-  title: String = "App Works !";
   gridOptions : api.GridOptions;
+
+  @ViewChild('columnchooserbtn') columnchooserbtn : ElementRef;
+
   private columns = Array.of<api.ColumnDefinition>();
 
   constructor() {
@@ -64,10 +66,8 @@ export class AppComponent implements AfterViewInit {
   public ngAfterViewInit(): void {
   }
 
-  private v : boolean = false;
-  public showhide() {
-    this.gridOptions.api.setColumnVisibility(this.columns[1], this.v);
-    this.v = !this.v;
+  public columnchooser() {
+    this.gridOptions.api.showColumnChooser(this.columnchooserbtn.nativeElement);
   }
 
   private createColumn(i : number) : api.ColumnDefinition {

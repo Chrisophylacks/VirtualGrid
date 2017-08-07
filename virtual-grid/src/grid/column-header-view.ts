@@ -1,20 +1,21 @@
 import * as utils from '../utils/utils';
 
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, ComponentFactoryResolver, ComponentFactory, ViewContainerRef, ComponentRef } from "@angular/core";
-import { HorizontalDragService } from '../utils/horizontaldragservice';
+import { DragService } from '../utils/drag-service';
 import { IMenuPopup } from './menu-popup';
 import { IconFactory } from '../utils/icons';
 import { Column } from './column';
+import { ColumnDragService } from './column-drag-service';
 
 @Component({
-  selector: 'vcolumn-header',
+  selector: 'column-header',
   template: `
     <div class="column-header" [style.width]='currentWidth'>
         <div #resizeGrip class="resize-grip" style="float:right"></div>
         <div *ngIf="column.sortDirection.value == 1" style="float:left">▲</div>
         <div *ngIf="column.sortDirection.value == 2" style="float:left">▼</div>
         <div *ngIf="column.filter" cl #filterButton [class]="filterClass" (click)="filter()"></div>
-        <div class="column-header-text" (click)="sort()">{{currentTitle}}</div>
+        <div #dragGrip class="column-header-text" (click)="sort()">{{currentTitle}}</div>
     </div>`
 })
 export class ColumnHeaderView extends utils.ComponentBase implements AfterViewInit {
@@ -24,8 +25,13 @@ export class ColumnHeaderView extends utils.ComponentBase implements AfterViewIn
 
     @Input() iconFactory : IconFactory;
 
+    @Input() columnDragService : ColumnDragService;
+
     @ViewChild('resizeGrip') resizeGripRef : ElementRef;
     private get resizeGrip() : HTMLElement { return <HTMLElement>this.resizeGripRef.nativeElement; }
+
+    @ViewChild('dragGrip') dragGripRef : ElementRef;
+    private get dragGrip() : HTMLElement { return <HTMLElement>this.dragGripRef.nativeElement; }
 
     @ViewChild('filterButton') filterButtonRef : ElementRef;
 
@@ -51,9 +57,11 @@ export class ColumnHeaderView extends utils.ComponentBase implements AfterViewIn
         }
         return this.column.filter.isEnabled() ? 'filter' : 'filter filter-inactive';
     }
+
     public ngAfterViewInit() : void {
         (<HTMLElement>this.filterButtonRef.nativeElement).innerHTML = this.iconFactory.getIcon('filter');
         this.initResize();
+        this.anchor(this.columnDragService.register(this.column, this.dragGrip));
     }
 
     public suppress(e : Event) {
@@ -70,10 +78,9 @@ export class ColumnHeaderView extends utils.ComponentBase implements AfterViewIn
                 this.column.filter.prepareForView();
             }
             
-            let origin = this.filterButtonRef.nativeElement;
             this.menu.show(
                 this.column.filter.getViewComponentType(),
-                origin.offsetLeft + origin.offsetParent.offsetLeft,
+                this.filterButtonRef.nativeElement,
                 c => { c.filter = this.column.filter; });
         }
     }
@@ -83,23 +90,14 @@ export class ColumnHeaderView extends utils.ComponentBase implements AfterViewIn
             return;
         }
         
-        this.anchor(HorizontalDragService.addDragHandling(
+        let dragStartWidth : number;
+        this.anchor(DragService.addDragHandling(
             {
                 eDraggableElement : this.resizeGrip,
                 cursor : 'col-resize',
                 startAfterPixels : 0,
-                onDragStart : () => this.onDragStart(),
-                onDragging : (d, f) => this.onDragging(d, f),
+                onDragStart : () => { dragStartWidth = this.column.width.value; },
+                onDragging : (e, dx, dy, f) => { this.column.width.value = dragStartWidth + dx; },
             }));
     }
-
-    private dragStartWidth : number;
-
-    private onDragStart() : void {
-        this.dragStartWidth = this.column.width.value;
-    }
-
-    private onDragging(delta: number, finished: boolean) : void {
-        this.column.width.value = this.dragStartWidth + delta;
-    }    
 }

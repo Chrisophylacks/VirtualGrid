@@ -26,6 +26,8 @@ export interface IGridApi {
     setColumnVisibility(column: ColumnDefinition, visible : boolean);
     getColumnVisibility(column: ColumnDefinition) : boolean;
 
+    showColumnChooser(location : HTMLElement) : void;
+    
     // data
     setRowCount(rowCount : number);
     setColumns(columns : ColumnDefinition[]);

@@ -1,5 +1,6 @@
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, Output } from "@angular/core";
-import { HorizontalDragService } from '../utils/horizontaldragservice';
+import { ColumnDragService } from './column-drag-service';
+import { ColumnChooserView } from './column-chooser-view';
 import { Column } from './column';
 import { MenuPopup } from './menu-popup';
 import { IconFactory } from '../utils/icons';
@@ -14,7 +15,7 @@ import * as api from './contracts';
     <div #grid class="grid" style="width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
         <div style="width:100%" [style.height]="headerHeight" style="overflow:hidden">
             <div #header class="header" style="position:relative;height:100%">
-                <vcolumn-header *ngFor="let col of visibleColumns" [column]="col" [iconFactory]="iconFactory" [menu]="menu" class="column-header-container"></vcolumn-header>
+                <column-header *ngFor="let col of visibleColumns" [column]="col" [iconFactory]="iconFactory" [columnDragService]="columnDragService" [menu]="menu" class="column-header-container"></column-header>
             </div>
         </div>
         <menu-popup #menu></menu-popup>
@@ -74,6 +75,8 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         }
         return this._options.icons;
     });
+
+    public readonly columnDragService = new ColumnDragService();
 
     private readonly dirtables = new DirtableContainer();
     private readonly viewportWidth = this.dirtables.register();
@@ -202,6 +205,10 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         return undefined;
     }    
 
+    public showColumnChooser(origin : HTMLElement) : void {
+        this.menu.show(ColumnChooserView, origin, x => { x.columns = this.allColumns; });
+    }
+
     private updateVisibleColumns() : void {
         this.visibleColumns = this.allColumns.filter(x => x.isVisible.value);
         this.redrawAll = true;
@@ -224,7 +231,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
             this.viewportLeftOffset.update(this.viewport.scrollLeft);
             this.viewportTopOffset.update(this.viewport.scrollTop);
             this.topRowIndex.update(Math.floor(this.viewport.scrollTop / this._options.rowHeight));
-        });        
+        }); 
     }
 
     private onResize() : void {
@@ -239,7 +246,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
     private onMouseMove(e : MouseEvent) : void {
         this.updateLock.execute(() =>
         {
-            this.updateHoverRow(Math.floor((e.pageY - this.getTotalCanvasTopOffset()) / this._options.rowHeight));
+            this.updateHoverRow(Math.floor((e.pageY - utils.getTotalOffset(<HTMLElement>this.viewport).y) / this._options.rowHeight));
         });
     }
 
@@ -419,17 +426,6 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
             left += col.width.value;
         }
         context.setLineDash([]);
-    }
-
-    private getTotalCanvasTopOffset() : number {
-        let cur = 0;
-        let obj = <HTMLElement>this.viewport;
-        if (obj.offsetParent) {
-            do {
-                cur += obj.offsetTop;
-            } while (obj = <HTMLElement>obj.offsetParent);
-        }
-        return cur;
     }
 }
 
