@@ -30,9 +30,6 @@ export class Truncator {
 
         let i = 0;
         while (high - low > 1) {
-            if (i++ > 10) {
-                break;
-            }
             let mid = Math.ceil(low + ((high - low) / 2));
             if (this.context.measureText(str.substring(0, mid)).width <= totalWidth) {
                 low = mid;
