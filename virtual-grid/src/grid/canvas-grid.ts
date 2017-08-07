@@ -26,6 +26,7 @@ import * as api from './contracts';
         </div>
         <div #rowEven class="row-even" style="display:none"></div>
         <div #rowOdd class="row-odd" style="display:none"></div>
+        <div #rowHover class="row-hover" style="display:none"></div>
     </div>`
 })
 export class CanvasGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
@@ -59,6 +60,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
     @ViewChild('menu') menu : MenuPopup;
     @ViewChild('rowEven') rowEven : ElementRef;
     @ViewChild('rowOdd') rowOdd : ElementRef;
+    @ViewChild('rowHover') rowHover : ElementRef;
 
     @Input() set gridOptions(gridOptions : api.GridOptions) {
         this._options = gridOptions;
@@ -367,47 +369,65 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         let context = this.canvas.getContext('2d');
         let gridStyle = getComputedStyle(this.gridRef.nativeElement)
         context.font = gridStyle.font;
-        let fitter = new Truncator(context);
+        let truncator = new Truncator(context);
         let textShift = this._options.rowHeight - (this._options.rowHeight - parseInt(gridStyle.fontSize));
 
         if (this.redrawAll) {
             context.clearRect(0, 0, this.viewportWidth.value, this.viewportHeight.value);
         }
 
+        const ellipsis = '…';
+        let ellipsisWidth = context.measureText(ellipsis).width;
+
         this.visibleRows.forEach((row, i) =>
         {
             if (row.isDirty || this.redrawAll) {
                 let dataRow = row.value;
                 row.clear();
-                let background : string;
+                let rowStyle = gridStyle;
                 if (i === this.hoverRowIndex) {
-                    background = 'rgb(0,0,255)';
+                    rowStyle = getComputedStyle(this.rowHover.nativeElement);
                 } else {
-                    let rowStyle : CSSStyleDeclaration;
                     if (this._options.rowAlternationMode !== undefined && this._options.rowAlternationMode !== api.RowAlternationMode.None) {
                         let alternationIndex = this._options.rowAlternationMode === api.RowAlternationMode.DataIndex
                             ? this.topRowIndex.value + i
                             : i;
                         rowStyle = getComputedStyle(alternationIndex % 2 == 0 ? this.rowEven.nativeElement : this.rowOdd.nativeElement);
                     }
-
-                    if (rowStyle) {
-                        background = rowStyle.backgroundColor;
-                    }
                 }
 
                 let top = i * this._options.rowHeight;
-                if (background) {
-                    context.fillStyle = background;
-                    context.fillRect(0, top, this.viewportWidth.value, this._options.rowHeight);
-                }
+                context.fillStyle = rowStyle.backgroundColor;
+                context.fillRect(0, top, this.viewportWidth.value, this._options.rowHeight);
+                context.fillStyle = rowStyle.color;
 
-                context.fillStyle = 'rgb(0,0,0)';
                 let left = 0;
                 for (let col of this.visibleColumns) {
                     let text = col.formatText(dataRow);
-                    context.fillText(fitter.fitString(text, col.width.value - 2), left + 1.5, top + textShift);
-                    left += col.width.value;
+                    if (text.length > 0) {
+                        context.fillText(truncator.fitString(text, col.width.value - 2), left + 1.5, top + textShift);
+                        /* alternative truncation. doesn't look very good and leads to drawing longer text
+                        let colWidth = col.width.value - 2;
+                        if (colWidth > ellipsisWidth) {
+                            // optimize - assume text should occupy at least 4 pixels for symbol
+                            if (text.length * 4 > colWidth) {
+                                text = text.substring(0, Math.ceil(colWidth / 4));
+                            }
+                            let strWidth = context.measureText(text).width;
+                            if (strWidth > colWidth) {
+                                context.save();
+                                context.rect(left + 1.5, top, colWidth - ellipsisWidth, this._options.rowHeight);
+                                context.clip();
+                                context.fillText(text, left + 1.5, top + textShift);
+                                context.restore();
+                                context.fillText(ellipsis, left + 1.5 + colWidth - ellipsisWidth, top + textShift);
+                            } else {
+                                context.fillText(text, left + 1.5, top + textShift, colWidth);
+                            }
+                        }
+                        */
+                        left += col.width.value;
+                    }
                 }
             }
         });

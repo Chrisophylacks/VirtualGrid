@@ -14,7 +14,7 @@ import { ColumnDragService } from './column-drag-service';
         <div #resizeGrip class="resize-grip" style="float:right"></div>
         <div *ngIf="column.sortDirection.value == 1" style="float:left">▲</div>
         <div *ngIf="column.sortDirection.value == 2" style="float:left">▼</div>
-        <div *ngIf="column.filter" cl #filterButton [class]="filterClass" (click)="filter()"></div>
+        <div *ngIf="column.filter" #filterButton [class]="filterClass" (click)="filter()"></div>
         <div #dragGrip class="column-header-text" (click)="sort()">{{currentTitle}}</div>
     </div>`
 })
@@ -59,7 +59,9 @@ export class ColumnHeaderView extends utils.ComponentBase implements AfterViewIn
     }
 
     public ngAfterViewInit() : void {
-        (<HTMLElement>this.filterButtonRef.nativeElement).innerHTML = this.iconFactory.getIcon('filter');
+        if (this.filterButtonRef) {
+            (<HTMLElement>this.filterButtonRef.nativeElement).innerHTML = this.iconFactory.getIcon('filter');
+        }
         this.initResize();
         this.anchor(this.columnDragService.register(this.column, this.dragGrip));
     }

@@ -1,5 +1,5 @@
 export class Truncator {
-    private readonly ellipsis : '…';
+    private readonly ellipsis = '…';
     private readonly ellipsisWidth : number;
 
     constructor(private readonly context : CanvasRenderingContext2D) {
@@ -7,6 +7,15 @@ export class Truncator {
     }
 
     public fitString(str : string, maxWidth : number) : string {
+        if (maxWidth < this.ellipsisWidth) {
+            return '';
+        }
+
+        // optimize - assume text should occupy at least 4 pixels for symbol
+        if (str.length * 4 > maxWidth) {
+            str = str.substring(0, Math.ceil(maxWidth / 4));
+        }
+
         var width = this.context.measureText(str).width;
         if (width <= maxWidth) {
             return str;
@@ -14,12 +23,29 @@ export class Truncator {
         if (width <= this.ellipsisWidth) {
             return '';
         }
+        let totalWidth = maxWidth - this.ellipsisWidth;
 
-        var len = str.length;
-        while (width>=maxWidth-this.ellipsisWidth && len-->0) {
-            str = str.substring(0, len);
-            width = this.context.measureText(str).width;
+        let low = 0;
+        let high = str.length;
+
+        let i = 0;
+        while (high - low > 1) {
+            if (i++ > 10) {
+                break;
+            }
+            let mid = Math.ceil(low + ((high - low) / 2));
+            if (this.context.measureText(str.substring(0, mid)).width <= totalWidth) {
+                low = mid;
+            }
+            else {
+                high = mid;
+            }
         }
-        return str + this.ellipsis;
+
+        if (low === 0) {
+            return this.ellipsis;
+        }
+
+        return str.substring(0, low) + this.ellipsis;
     }    
 }
