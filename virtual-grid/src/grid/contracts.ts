@@ -23,15 +23,15 @@ export interface ColumnSort {
 }
 
 export interface IGridApi {
-    setColumnVisibility(column: ColumnDefinition, visible : boolean);
+    setColumnVisibility(column: ColumnDefinition, visible : boolean) : void;
     getColumnVisibility(column: ColumnDefinition) : boolean;
 
     showColumnChooser(location : HTMLElement) : void;
-    
+
     // data
-    setRowCount(rowCount : number);
-    setColumns(columns : ColumnDefinition[]);
-    updateRows(rows : DataRow[]);
+    setRowCount(rowCount : number) : void;
+    setColumns(columns : ColumnDefinition[]) : void;
+    updateRows(rows : DataRow[]) : void;
 
     buildFilterExpression<T>(builder : IExpressionBuilder<T>, defaultExpression :T) : T;
 }

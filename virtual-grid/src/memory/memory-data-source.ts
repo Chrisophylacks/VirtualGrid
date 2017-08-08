@@ -16,6 +16,8 @@ export class MemoryDataSource implements api.IGridDataSource {
     private sort : api.ColumnSort[] = new Array();
     private filterExpression : Expression;
 
+    public debugDelay : number = 0;
+
     constructor() {
         this.filterExpression = this.expressionBuilder.default;
     }
@@ -32,19 +34,17 @@ export class MemoryDataSource implements api.IGridDataSource {
 
     requestRange(range: api.RowRange) {
         this.range = range;
-        this.updateGrid(false);
+        this.scheduleUpdateGrid(false, false, true);
     }
 
     requestSort(sort: api.ColumnSort[]) {
         this.sort = sort;
-        this.updateViewportData();
-        this.updateGrid(true);
+        this.scheduleUpdateGrid(true, true, true);
     }
 
     requestFilter() {
         this.filterExpression = this.gridApi.buildFilterExpression(this.expressionBuilder, this.expressionBuilder.default);
-        this.updateViewportData();
-        this.updateGrid(true);
+        this.scheduleUpdateGrid(true, true, true);
     }
 
     getFilterValues(column : api.ColumnDefinition) : Promise<string[]> {
@@ -67,8 +67,7 @@ export class MemoryDataSource implements api.IGridDataSource {
     refresh(data : any[]) {
         this.rawData = data.map((x, i) => <RawEntry>{ data : x, isDirty : true, index: i });
         if (!this.batchInProgress) {
-            this.updateViewportData();
-            this.updateGrid(false);
+            this.scheduleUpdateGrid(true, false, false);
         }
     }
 
@@ -79,16 +78,14 @@ export class MemoryDataSource implements api.IGridDataSource {
     endBatch() : void {
         this.batchInProgress = false;
         this.updateIndexes();
-        this.updateViewportData();
-        this.updateGrid(true);
+        this.scheduleUpdateGrid(true, true, false);
     }
 
     update(index : number, data : any) {
         if (this.rawData) {
             this.rawData[index] = <RawEntry>{ data : data, isDirty : true, index: index };
             if (!this.batchInProgress) {
-                this.updateViewportData();
-                this.updateGrid(true);
+                this.scheduleUpdateGrid(true, true, false);
             }
         }
     }
@@ -98,8 +95,7 @@ export class MemoryDataSource implements api.IGridDataSource {
             this.rawData.splice(index, 0, <RawEntry>{ data : data, isDirty : true, index: index });
             if (!this.batchInProgress) {
                 this.updateIndexes();
-                this.updateViewportData();
-                this.updateGrid(true);
+                this.scheduleUpdateGrid(true, true, false);
             }
         }
     }    
@@ -109,8 +105,7 @@ export class MemoryDataSource implements api.IGridDataSource {
             this.rawData.splice(index, 1);
             if (!this.batchInProgress) {
                 this.updateIndexes();
-                this.updateViewportData();
-                this.updateGrid(true);
+                this.scheduleUpdateGrid(true, true, false);
             }
         }
     }
@@ -121,33 +116,53 @@ export class MemoryDataSource implements api.IGridDataSource {
         }
     }
 
-    private updateViewportData() : void{
+    private updateViewportData() : void {
 
-        let oldRowCount = this.viewportData === undefined ? 0 : this.viewportData.length;
-        this.viewportData = this.rawData
-            .filter(r => this.filterExpression(r.data))
-            .sort((x, y) =>
-                {
-                    if (this.sort !== undefined) {
-                        for (var s of this.sort) {
-                            var px = x.data[s.column.field];
-                            var py = y.data[s.column.field];
-                            if (px != py) {
-                                var diff = px < py ? -1 : 1;
-                                return s.sortDirection === api.SortDirection.Ascending ? diff : -diff;
-                            }
-                        }
-                    }
-                    return x.index < y.index ? -1 : 1;
-                })
-            .map((x, i) => <ViewportEntry>{ visualIndex : i, row : x });
-        
-        if (this.gridApi !== undefined && oldRowCount !== this.viewportData.length) {
-            this.gridApi.setRowCount(this.viewportData.length);
+    }
+
+    private updateRequest : any;
+
+    private scheduleUpdateGrid(updateViewportData : boolean, checkLastViewport : boolean, delay : boolean) : void {
+        let request = {};
+        this.updateRequest = request;
+        if (delay && this.debugDelay) {
+            setTimeout(c => {
+                if (this.updateRequest === request) {
+                    this.updateGrid(updateViewportData, checkLastViewport);
+                }
+            }, this.debugDelay);
+        }
+        else {
+            this.updateGrid(updateViewportData, checkLastViewport);
         }
     }
 
-    private updateGrid(checkLastViewport : boolean) : void {
+    private updateGrid(updateViewportData : boolean, checkLastViewport : boolean) : void {
+        if (updateViewportData) {
+            let oldRowCount = this.viewportData === undefined ? 0 : this.viewportData.length;
+            this.viewportData = this.rawData
+                .filter(r => this.filterExpression(r.data))
+                .sort((x, y) =>
+                    {
+                        if (this.sort !== undefined) {
+                            for (var s of this.sort) {
+                                var px = x.data[s.column.field];
+                                var py = y.data[s.column.field];
+                                if (px != py) {
+                                    var diff = px < py ? -1 : 1;
+                                    return s.sortDirection === api.SortDirection.Ascending ? diff : -diff;
+                                }
+                            }
+                        }
+                        return x.index < y.index ? -1 : 1;
+                    })
+                .map((x, i) => <ViewportEntry>{ visualIndex : i, row : x });
+            
+            if (this.gridApi !== undefined && oldRowCount !== this.viewportData.length) {
+                this.gridApi.setRowCount(this.viewportData.length);
+            }
+        }
+
         if (this.gridApi === undefined) {
             return;
         }

@@ -29,7 +29,7 @@ export class AppComponent implements AfterViewInit {
         let h = 0;
         for (let col of this.columns) {
           if (col.field !== 'status') {
-            row[col.field] = h + '-' + (index + h) + '-' + step;
+            row[col.field] = h + '-' + (index + h) + '-' + step + 'data string which should be truncated';
           }
           ++h;
         }
@@ -37,6 +37,7 @@ export class AppComponent implements AfterViewInit {
     }
 
     let dataSource = new api.MemoryDataSource();
+    dataSource.debugDelay = 200;
     setTimeout(() => {
       dataSource.setSchema(this.columns);
 

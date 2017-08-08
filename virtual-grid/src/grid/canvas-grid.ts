@@ -114,8 +114,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
     }
 
     public setRowCount(rowCount : number) {
-        this.updateLock.execute(() =>
-        {
+        this.updateLock.execute(() => {
             this.rowCount.update(rowCount);
         });
     }
@@ -138,6 +137,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                 columnChanges.add(
                     col.sortDirection.onChanged(() => {
                         // this.invalidateAllRows(); // TODO: decide if this is necessary
+                        this.rowCache.clear();
                         this.updateLock.execute(() => this.sort.setDirty());
                     }));
 
@@ -176,7 +176,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                 if (adjustedIndex >= 0 && adjustedIndex < this.visibleRows.length) {
                     this.visibleRows[adjustedIndex].update(dataRow);
                 } else {
-                    this.rowCache.set(dataRow.index, dataRow.data);
+                    this.rowCache.set(dataRow.index, dataRow);
                 }
             }
         })
@@ -335,17 +335,13 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
             visibleRowCount = maxIndex - this.topRowIndex.value + 1;
         }
 
-        if (this.visibleRows.length === visibleRowCount) {
-            return;
-        }
-
         this.visibleRowsCount.update(visibleRowCount);
+        let localRowCache = new Map<number, api.DataRow>();
 
         // cache existing data
         for (let row of this.visibleRows) {
-            let dataRow = row.value.data;
-            if (dataRow !== undefined) {
-                this.rowCache.set(dataRow.index, dataRow);
+            if (row.value) {
+                localRowCache.set(row.value.index, row.value);
             }
         }
 
@@ -361,7 +357,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         // update data
         let topIndex = this.topRowIndex.value;
         for (let i = 0; i < visibleRowCount; ++i) {
-            this.visibleRows[i].update(this.rowCache.get(topIndex + i));
+            this.visibleRows[i].update(this.rowCache.get(topIndex + i) || localRowCache.get(topIndex + i));
         }
     }
 
