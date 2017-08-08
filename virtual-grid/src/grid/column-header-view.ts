@@ -2,6 +2,7 @@ import * as utils from '../utils/utils';
 
 import { Component, AfterViewInit, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef, Input, ComponentFactoryResolver, ComponentFactory, ViewContainerRef, ComponentRef } from "@angular/core";
 import { DragService } from '../utils/drag-service';
+import { IColumnDragService } from './canvas-grid';
 import { IMenuPopup } from './menu-popup';
 import { IconFactory } from '../utils/icons';
 import { Column } from './column';
@@ -25,7 +26,7 @@ export class ColumnHeaderView extends utils.ComponentBase implements AfterViewIn
 
     @Input() iconFactory : IconFactory;
 
-    @Input() columnDragService : ColumnDragService;
+    @Input() columnDragService : IColumnDragService;
 
     @ViewChild('resizeGrip') resizeGripRef : ElementRef;
     private get resizeGrip() : HTMLElement { return <HTMLElement>this.resizeGripRef.nativeElement; }

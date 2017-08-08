@@ -3,17 +3,19 @@ import * as api from './contracts';
 
 export class Column {
     public width : utils.Property<number>;
-    public isVisible : utils.Property<boolean>;
     public sortDirection : utils.Property<api.SortDirection>;
     public filter : api.IFilter | undefined;
+    public order : number;
+    public isVisible : boolean = true;
 
     constructor(
         public readonly def : api. ColumnDefinition,
-        dataSource : api.IGridDataSource
+        dataSource : api.IGridDataSource,
+        initialOrder : number
         ) {
         this.width = new utils.Property<number>(def.width || 100);
-        this.isVisible = new utils.Property<boolean>(true);
         this.sortDirection = new utils.Property<number>(api.SortDirection.None);
+        this.order = initialOrder;
         if (def.filterFactory) {
             this.filter = def.filterFactory(
                 {

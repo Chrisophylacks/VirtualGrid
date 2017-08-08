@@ -5,9 +5,14 @@ import { Column } from './column';
 import { MenuPopup } from './menu-popup';
 import { IconFactory } from '../utils/icons';
 import { Truncator } from '../utils/truncator';
+import { DragService } from '../utils/drag-service';
 
 import * as utils from '../utils/utils';
 import * as api from './contracts';
+
+export interface IColumnDragService {
+    register(column : Column, grip : HTMLElement) : utils.Subscription
+}
 
 @Component({
   selector: 'canvas-grid',
@@ -15,7 +20,7 @@ import * as api from './contracts';
     <div #grid class="grid" style="width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
         <div style="width:100%" [style.height]="headerHeight" style="overflow:hidden">
             <div #header class="header" style="position:relative;height:100%">
-                <column-header *ngFor="let col of visibleColumns" [column]="col" [iconFactory]="iconFactory" [columnDragService]="columnDragService" [menu]="menu" class="column-header-container"></column-header>
+                <column-header *ngFor="let col of visibleColumns" [column]="col" [iconFactory]="iconFactory" [columnDragService]="this" [menu]="menu" class="column-header-container"></column-header>
             </div>
         </div>
         <menu-popup #menu></menu-popup>
@@ -29,7 +34,7 @@ import * as api from './contracts';
         <div #rowHover class="row-hover" style="display:none"></div>
     </div>`
 })
-export class CanvasGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi {
+export class CanvasGridComponent extends utils.ComponentBase implements AfterViewInit, OnDestroy, api.IGridApi, IColumnDragService {
 
     private visibleRows = Array.of<Dirtable<api.DataRow>>();
     private allColumns = Array.of<Column>();
@@ -62,6 +67,9 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
     @ViewChild('rowOdd') rowOdd : ElementRef;
     @ViewChild('rowHover') rowHover : ElementRef;
 
+    private dragMarker : HTMLElement
+    private insertMarker : HTMLElement
+
     @Input() set gridOptions(gridOptions : api.GridOptions) {
         this._options = gridOptions;
         this._options.api = this;
@@ -77,8 +85,6 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         }
         return this._options.icons;
     });
-
-    public readonly columnDragService = new ColumnDragService();
 
     private readonly dirtables = new DirtableContainer();
     private readonly viewportWidth = this.dirtables.register();
@@ -113,6 +119,17 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         });
     }
 
+    public register(column : Column, grip : HTMLElement) : utils.Subscription {
+        return DragService.addDragHandling(
+            {
+                eDraggableElement : grip,
+                cursor : 'move',
+                startAfterPixels : 2,
+                onDragStart : () => this.onDrag(column),
+                onDragging : (e, dx, dy, f) => this.onDragging(e, f, column),
+            });
+    }
+
     public setRowCount(rowCount : number) {
         this.updateLock.execute(() => {
             this.rowCount.update(rowCount);
@@ -123,9 +140,9 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         this.updateLock.execute(() =>
         {
             let columnChanges = new utils.CompositeSubscription();
-            this.allColumns = columns.map(x =>
+            this.allColumns = columns.map((x,i)=>
             {
-                var col = new Column(x,  this._options.dataSource);
+                var col = new Column(x,  this._options.dataSource, i);
                 columnChanges.add(
                     col.width.onChanged(utils.animationThrottled(() => {
                         this.updateLock.execute(() =>
@@ -141,29 +158,11 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                         this.updateLock.execute(() => this.sort.setDirty());
                     }));
 
-                columnChanges.add(
-                    col.isVisible.onChanged(() => {
-                        this.updateLock.execute(() => {
-
-                            this.updateVisibleColumns();
-                            this.updateTotalWidth();
-                            this.changeDetectorRef.detectChanges();
-
-                            if (col.filter && col.filter.isEnabled()) {
-                                this._options.dataSource.requestFilter();
-                            }
-                            if (col.sortDirection.value !== api.SortDirection.None) {
-                                this.sort.setDirty();
-                            }
-                        });
-                    }));
-
                 return col;
             });
 
             this.columnSubscription.set(columnChanges);
             this.updateVisibleColumns();
-            this.changeDetectorRef.detectChanges();
         });
     }
 
@@ -192,27 +191,44 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         return expr;
     }
 
+    public getColumnVisibility(column: api.ColumnDefinition) : boolean {
+        return this.visibleColumns.find(x => x.def.field === column.field) !== undefined;
+    }
+
     public setColumnVisibility(column: api.ColumnDefinition, visible : boolean) {
         let col = this.allColumns.find(x => x.def.field === column.field);
         if (col) {
-            col.isVisible.value = visible;
+            let isVisible = this.getColumnVisibility(column);
+            if (isVisible !== visible) {
+                this.updateLock.execute(() => {
+
+                    col.isVisible = visible;
+
+                    if (col.filter && col.filter.isEnabled()) {
+                        this._options.dataSource.requestFilter();
+                        this.rowCache.clear();
+                    }
+                    if (col.sortDirection.value !== api.SortDirection.None) {
+                        this.sort.setDirty();
+                    }
+
+                    this.updateVisibleColumns();
+                })
+            }
         }
     }
 
-    public getColumnVisibility(column: api.ColumnDefinition) : boolean {
-        let col = this.allColumns.find(x => x.def.field === column.field);
-        if (col) {
-            return col.isVisible.value;
-        }
-        return undefined;
-    }    
-
     public showColumnChooser(origin : HTMLElement) : void {
-        this.menu.show(ColumnChooserView, origin, x => { x.columns = this.allColumns; });
+        this.menu.show(ColumnChooserView, origin, x => { 
+            x.columns = this.allColumns;
+            x.api = this;
+        });
     }
 
     private updateVisibleColumns() : void {
-        this.visibleColumns = this.allColumns.filter(x => x.isVisible.value);
+        this.visibleColumns = this.allColumns.filter(x => x.isVisible).sort((x,y) => x.order - y.order);
+        this.updateTotalWidth();
+        this.changeDetectorRef.detectChanges();        
         this.redrawAll = true;
     }
 
@@ -225,6 +241,51 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         }
         this.totalWidth.update(totalWidth);
         this.redrawAll = true;
+    }
+
+    
+    private onDrag(column : Column) : void {
+        this.dragMarker = utils.createHtml(`<div style="width:auto;height:auto;background:white;position:fixed;border:1px solid black">${column.title}<div>`)
+        this.insertMarker = utils.createHtml(`<div style="width:2px;height:${this._options.rowHeight + 2}px;background:gray;position:fixed"><div>`)
+        document.body.appendChild(this.dragMarker);
+        document.body.appendChild(this.insertMarker);
+    }
+
+    private onDragging(e: MouseEvent, finished : boolean, draggedColumn : Column) : void {
+        let offset = this.viewportLeftOffset.value;
+
+        let index = 0;
+        for (;index < this.visibleColumns.length; ++index) {
+            if (e.pageX >= offset && e.pageX < offset + this.visibleColumns[index].width.value) {
+                break;
+            }
+            offset += this.visibleColumns[index].width.value;
+        }
+        
+        if (finished) {
+            this.dragMarker.remove();
+            this.insertMarker.remove();
+            let currentIndex = this.visibleColumns.indexOf(draggedColumn);
+            if (currentIndex !== index && currentIndex !== index + 1 && currentIndex >= 0) {
+                this.updateLock.execute(() => {
+                    if (index >= this.visibleColumns.length) {
+                        draggedColumn.order = this.visibleColumns[this.visibleColumns.length - 1].order + 1;
+                    } else if (index <= 0) {
+                        draggedColumn.order = this.visibleColumns[0].order - 1;
+                    } else {
+                        draggedColumn.order = (this.visibleColumns[index].order + this.visibleColumns[index - 1].order) / 2;
+                    }
+                    this.allColumns.sort((x,y) => x.order - y.order).forEach((x,i) => x.order = i);
+                    this.updateVisibleColumns();
+                });
+            }
+        } else {
+            let viewportOffset = utils.getTotalOffset(this.viewport);
+            this.dragMarker.style.left = e.pageX + 'px';
+            this.dragMarker.style.top = e.pageY + 'px';
+            this.insertMarker.style.left = (offset - 1) + 'px';
+            this.insertMarker.style.top = (viewportOffset.y - this._options.rowHeight - 1) + 'px';
+        }
     }
 
     private onScroll() : void {
