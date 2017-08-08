@@ -37,7 +37,7 @@ export class Column {
             return this.def.formatText(rowData.data);
         }
 
-        let fieldValue =  rowData.data[this.def.field];
+        let fieldValue = rowData.data[this.def.field];
         if (fieldValue === undefined) {
             return '';
         }

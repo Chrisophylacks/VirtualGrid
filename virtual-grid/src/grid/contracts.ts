@@ -28,6 +28,9 @@ export interface IGridApi {
 
     showColumnChooser(location : HTMLElement) : void;
 
+    getLayout() : any;
+    setLayout(layout : any) : void;
+
     // data
     setRowCount(rowCount : number) : void;
     setColumns(columns : ColumnDefinition[]) : void;
@@ -76,6 +79,9 @@ export interface IFilter {
     getViewComponentType() : any;
     createFilterExpression<T>(builder : IExpressionBuilder<T>) : T;
     prepareForView?() : void;
+
+    getState() : any;
+    setState(layout : any) : void;    
 }
 
 export interface IFilterParams {

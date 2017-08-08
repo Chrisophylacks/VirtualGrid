@@ -15,6 +15,9 @@ export abstract class FilterBase implements api.IFilter {
 
     public abstract createFilterExpression<T>(builder : api.IExpressionBuilder<T>);
 
+    public abstract getState() : any;
+    public abstract setState(layout : any) : void;    
+
     public raiseChanged(throttleTime? : number) : void {
         this.requestFilter(undefined, throttleTime);
     }

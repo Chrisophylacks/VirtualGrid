@@ -26,6 +26,14 @@ export class FilterText extends FilterBase {
     public createFilterExpression<T>(builder : api.IExpressionBuilder<T>) : T {
         return builder.contains(this.params.column, this.text.value);
     }
+
+    public getState() : any {
+        return this.text.value;
+    }
+
+    public setState(layout : any) : void {
+        this.text.value = layout;
+    }
 }
 
 @Component({

@@ -62,6 +62,17 @@ export class FilterSet extends FilterBase {
         }
         return expr;
     }
+
+    public getState() : any {
+        return Array.from(this.checkedValues);
+    }
+
+    public setState(layout : any) : void {
+        this.checkedValues.clear();
+        for (let e of <string[]>layout) {
+            this.checkedValues.add(e);
+        }
+    }
 }
 
 @Component({

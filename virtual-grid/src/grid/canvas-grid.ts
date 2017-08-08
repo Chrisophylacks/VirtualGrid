@@ -96,6 +96,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
     private readonly viewportTopOffset = this.dirtables.register();
     private readonly totalWidth = this.dirtables.register();
     private readonly sort = this.dirtables.register();
+    private readonly filter = this.dirtables.register();
     private redrawAll = true;
 
     constructor(
@@ -205,7 +206,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                     col.isVisible = visible;
 
                     if (col.filter && col.filter.isEnabled()) {
-                        this._options.dataSource.requestFilter();
+                        this.filter.setDirty();
                         this.rowCache.clear();
                     }
                     if (col.sortDirection.value !== api.SortDirection.None) {
@@ -216,6 +217,42 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                 })
             }
         }
+    }
+
+    public getLayout() : any {
+        return this.allColumns.sort((x,y) => x.order - y.order).map(col =>
+            <ColumnLayout>{
+                field : col.def.field,
+                visible : col.isVisible,
+                sort : col.sortDirection.value,
+                filter : col.filter ? col.filter.getState() : ''
+            });
+    }
+
+    public setLayout(layout : any) : void {
+        let layouts = <ColumnLayout[]>layout;
+        this.updateLock.execute(() =>
+        {
+            this.allColumns.forEach((col,i) =>{
+                let l = layouts.find(x => x.field === col.def.field);
+                if (l) {
+                    col.isVisible = l.visible;
+                    col.order = layout.indexOf(l);
+                    col.sortDirection.value = l.sort;
+                    if (col.filter && l.filter) {
+                        col.filter.setState(l.filter);
+                    }
+                } else {
+                    col.isVisible = false;
+                    col.order = this.allColumns.length + i;
+                }
+            });
+            this.allColumns = this.allColumns.sort((x,y) => x.order - y.order);
+            this.updateVisibleColumns();
+            this.rowCache.clear();
+            this.filter.setDirty();
+            this.sort.setDirty();
+        });
     }
 
     public showColumnChooser(origin : HTMLElement) : void {
@@ -242,7 +279,6 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
         this.totalWidth.update(totalWidth);
         this.redrawAll = true;
     }
-
     
     private onDrag(column : Column) : void {
         this.dragMarker = utils.createHtml(`<div style="width:auto;height:auto;background:white;position:fixed;border:1px solid black">${column.title}<div>`)
@@ -266,7 +302,7 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
             this.dragMarker.remove();
             this.insertMarker.remove();
             let currentIndex = this.visibleColumns.indexOf(draggedColumn);
-            if (currentIndex !== index && currentIndex !== index + 1 && currentIndex >= 0) {
+            if (index !== currentIndex && index !== currentIndex + 1 && currentIndex >= 0) {
                 this.updateLock.execute(() => {
                     if (index >= this.visibleColumns.length) {
                         draggedColumn.order = this.visibleColumns[this.visibleColumns.length - 1].order + 1;
@@ -352,6 +388,9 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                 this.visibleColumns
                     .filter(c => c.sortDirection.value !== api.SortDirection.None)
                     .map(c => <api.ColumnSort>{ column : c.def, sortDirection : c.sortDirection.value }));
+        }
+        if (this.filter.isDirty) {
+            this._options.dataSource.requestFilter();
         }
 
         // update element sizes and positions
@@ -463,26 +502,6 @@ export class CanvasGridComponent extends utils.ComponentBase implements AfterVie
                     let text = col.formatText(dataRow);
                     if (text.length > 0) {
                         context.fillText(truncator.fitString(text, col.width.value - 2), left + 1.5, top + textShift);
-                        /* alternative truncation. doesn't look very good and leads to drawing longer text
-                        let colWidth = col.width.value - 2;
-                        if (colWidth > ellipsisWidth) {
-                            // optimize - assume text should occupy at least 4 pixels for symbol
-                            if (text.length * 4 > colWidth) {
-                                text = text.substring(0, Math.ceil(colWidth / 4));
-                            }
-                            let strWidth = context.measureText(text).width;
-                            if (strWidth > colWidth) {
-                                context.save();
-                                context.rect(left + 1.5, top, colWidth - ellipsisWidth, this._options.rowHeight);
-                                context.clip();
-                                context.fillText(text, left + 1.5, top + textShift);
-                                context.restore();
-                                context.fillText(ellipsis, left + 1.5 + colWidth - ellipsisWidth, top + textShift);
-                            } else {
-                                context.fillText(text, left + 1.5, top + textShift, colWidth);
-                            }
-                        }
-                        */
                         left += col.width.value;
                     }
                 }
@@ -550,4 +569,11 @@ class Dirtable<T> {
     public clear() : void {
         this._isDirty = false;
     }
+}
+
+interface ColumnLayout {
+    field : string,
+    visible : boolean,
+    sort : api.SortDirection,
+    filter : any,
 }

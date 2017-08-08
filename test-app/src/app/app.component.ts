@@ -71,6 +71,18 @@ export class AppComponent implements AfterViewInit {
     this.gridOptions.api.showColumnChooser(this.columnchooserbtn.nativeElement);
   }
 
+  private layout : any;
+  
+  public save() : void {
+    this.layout = this.gridOptions.api.getLayout();
+  }
+
+  public restore() : void {
+    if (this.layout) {
+      this.gridOptions.api.setLayout(this.layout);
+    }
+  }
+
   private createColumn(i : number) : api.ColumnDefinition {
     let field = 'data' + i;
     return {

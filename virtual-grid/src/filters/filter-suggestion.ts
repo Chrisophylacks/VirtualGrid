@@ -65,6 +65,13 @@ export class FilterSuggestion extends FilterBase {
         }
         return expr;
     }
+
+    public getState() : any {
+        return '';
+    }
+
+    public setState(layout : any) : void {
+    }    
 }
 
 @Component({

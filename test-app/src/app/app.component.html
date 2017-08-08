@@ -1,5 +1,9 @@
 <div style="height:100vh;display:flex;flex-direction:column">
-    <button #columnchooserbtn (click)="columnchooser()" style="width:auto">Column chooser</button>
+    <div style="display:block">
+        <button #columnchooserbtn (click)="columnchooser()" style="width:auto">Column chooser</button>
+        <button (click)="save()" style="width:auto">Save</button>
+        <button (click)="restore()" style="width:auto">Restore</button>
+    </div>
     <div style="flex:1 1;min-height:0px">
         <canvas-grid [gridOptions]="gridOptions"></canvas-grid>
     </div>
